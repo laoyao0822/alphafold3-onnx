@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "torchfold3"
+authors = [{ name = "Jinghong Li", email = "lijinghong@qlu.edu.cn" }]
+description = "fold by torch."
+dynamic = ["version"]
+dependencies = [
+    "torch", 
+    "einops",
+]
+
+[tool.setuptools]
+packages = ["torchfold3"]
+
+[tool.setuptools.dynamic]
+version = { attr = "torchfold3.version.VERSION" }
