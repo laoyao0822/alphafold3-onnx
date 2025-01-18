@@ -36,7 +36,7 @@ from absl import app
 from absl import flags
 from alphafold3.common import folding_input
 from alphafold3.constants import chemical_components
-import alphafold3.cpp
+import alphafold3.cpp # type: ignore
 from alphafold3.data import featurisation
 from alphafold3.data import pipeline
 from alphafold3.model import features
@@ -52,9 +52,6 @@ from torchfold3.alphafold3 import AlphaFold3
 from torchfold3.misc.params import import_jax_weights_
 
 import intel_extension_for_pytorch as ipex
-
-device = torch.device('cpu')
-
 
 _HOME_DIR = pathlib.Path(os.environ.get('HOME'))
 DEFAULT_MODEL_DIR = _HOME_DIR / 'models/model_103275239_1'
@@ -399,7 +396,7 @@ def write_outputs(
 
     output_terms = (
         pathlib.Path(alphafold3.cpp.__file__).parent / 'OUTPUT_TERMS_OF_USE.md'
-    ).read_text()
+    ).read_text(errors='replace')
 
     os.makedirs(output_dir, exist_ok=True)
     for results_for_seed in all_inference_results:
