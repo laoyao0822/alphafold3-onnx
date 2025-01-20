@@ -372,7 +372,12 @@ class AlphaFold3(nn.Module):
             'target_feat': target_feat,  # type: ignore
         }
 
-        for _ in range(self.num_recycles):
+        for _ in range(self.num_recycles + 1):
+            # ref:
+            # Number of recycles is number of additional forward trunk passes.
+            # num_iter = self.config.num_recycles + 1
+            # embeddings, _ = hk.fori_loop(0, num_iter, recycle_body, (embeddings, key))
+            
             embeddings = self.evoformer(
                 batch=batch,
                 prev=embeddings,
