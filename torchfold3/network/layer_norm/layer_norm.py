@@ -85,18 +85,21 @@ sys.path.append(os.path.dirname(__file__))
 
 _shape_t = Union[int, List[int], Size]
 
-from torchfold3.network.layer_norm.torch_ext_compile import compile
+from torchfold3.config import *
 
-current_dir = os.path.dirname(__file__)
-fast_layer_norm_cuda = compile(
-    name="fast_layer_norm_cuda",
-    sources=[
-        os.path.join(f"{current_dir}/kernel", file)
-        for file in ["layer_norm_cuda.cpp", "layer_norm_cuda_kernel.cu"]
-    ],
-    extra_include_paths=[f"{current_dir}/kernel"],
-    build_directory=current_dir,
-)
+if _CUDA_LAYER_NORM_OPT:
+    from torchfold3.network.layer_norm.torch_ext_compile import compile
+
+    current_dir = os.path.dirname(__file__)
+    fast_layer_norm_cuda = compile(
+        name="fast_layer_norm_cuda",
+        sources=[
+            os.path.join(f"{current_dir}/kernel", file)
+            for file in ["layer_norm_cuda.cpp", "layer_norm_cuda_kernel.cu"]
+        ],
+        extra_include_paths=[f"{current_dir}/kernel"],
+        build_directory=current_dir,
+    )
 
 class FusedLayerNormAffineFunction(torch.autograd.Function):
 

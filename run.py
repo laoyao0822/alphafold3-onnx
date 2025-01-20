@@ -218,16 +218,16 @@ _CONFORMER_MAX_ITERATIONS = flags.DEFINE_integer(
     'conformer search.',
 )
 
-_BUCKETS = flags.DEFINE_list(
-    'buckets',
-    # pyformat: disable
-    ['256', '512', '768', '1024', '1280', '1536', '2048', '2560', '3072',
-     '3584', '4096', '4608', '5120'],
-    # pyformat: enable
-    'Strictly increasing order of token sizes for which to cache compilations.'
-    ' For any input with more tokens than the largest bucket size, a new bucket'
-    ' is created for exactly that number of tokens.',
-)
+# _BUCKETS = flags.DEFINE_list(
+#     'buckets',
+#     # pyformat: disable
+#     ['256', '512', '768', '1024', '1280', '1536', '2048', '2560', '3072',
+#      '3584', '4096', '4608', '5120'],
+#     # pyformat: enable
+#     'Strictly increasing order of token sizes for which to cache compilations.'
+#     ' For any input with more tokens than the largest bucket size, a new bucket'
+#     ' is created for exactly that number of tokens.',
+# )
 
 _NUM_RECYCLES = flags.DEFINE_integer(
     'num_recycles',
@@ -755,7 +755,7 @@ def main(_):
             data_pipeline_config=data_pipeline_config,
             model_runner=model_runner,
             output_dir=os.path.join(_OUTPUT_DIR.value, fold_input.sanitised_name()),
-            buckets=tuple(int(bucket) for bucket in _BUCKETS.value),
+            # buckets=tuple(int(bucket) for bucket in _BUCKETS.value),
             conformer_max_iterations=_CONFORMER_MAX_ITERATIONS.value,
         )
         num_fold_inputs += 1
