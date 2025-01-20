@@ -51,7 +51,6 @@ import torch.utils._pytree as pytree
 from torchfold3.alphafold3 import AlphaFold3
 from torchfold3.misc.params import import_jax_weights_
 
-import intel_extension_for_pytorch as ipex
 
 _HOME_DIR = pathlib.Path(os.environ.get('HOME'))
 DEFAULT_MODEL_DIR = _HOME_DIR / 'models/model_103275239_1'
@@ -228,6 +227,7 @@ class ModelRunner:
         
         # Apply IPEX optimization for CPU if device is CPU
         if self._device.type == 'cpu':
+            import intel_extension_for_pytorch as ipex
             print("Applying Intel Extension for PyTorch optimizations...")
             torch.set_flush_denormal(True)
             self._model = ipex.optimize(self._model,weights_prepack=False,optimize_lstm=True,auto_kernel_selection=True,dtype=torch.bfloat16)
