@@ -99,6 +99,12 @@ _CPU_INFERENCE = flags.DEFINE_bool(
     'Whether to run inference on the cpu.',
 )
 
+_LAYER_NORM_OPT = flags.DEFINE_bool(
+    'enable_layer_norm_opt',
+    False,
+    'Whether to run inference with the optimized layer norm.',
+)
+
 # control the number of threads used by the data pipeline.
 _NUM_THREADS = flags.DEFINE_integer(
     'num_cpu_threads',
@@ -226,12 +232,16 @@ class ModelRunner:
         self._model = self._model.to(device=self._device)
         
         # Apply IPEX optimization for CPU if device is CPU
-        if self._device.type == 'cpu':
+        if _CPU_INFERENCE.value:
             import intel_extension_for_pytorch as ipex
             print("Applying Intel Extension for PyTorch optimizations...")
             torch.set_flush_denormal(True)
             self._model = ipex.optimize(self._model,weights_prepack=False,optimize_lstm=True,auto_kernel_selection=True,dtype=torch.bfloat16)
             # self._model = torch.compile(self._model,backend="ipex")
+        if _CPU_INFERENCE.value == False:
+            print("Applying CUDA optimizations...")
+            # print(torch._dynamo.list_backends())
+            # self._model = torch.compile(self._model,backend="inductor",dynamic=False)
 
     @torch.inference_mode()
     def run_inference(
@@ -608,7 +618,8 @@ def main(_):
         if _CPU_INFERENCE.value:
             device = torch.device('cpu')
         else:
-            device = torch.device('cuda')
+            # 使用第二张显卡
+            device = torch.device('cuda:1')
         
         print(f'Found local device: {device}')
         

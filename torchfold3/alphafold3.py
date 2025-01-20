@@ -248,6 +248,18 @@ class Evoformer(nn.Module):
 
 
 class AlphaFold3(nn.Module):
+# ref:
+# def make_model_config(
+#     *,
+#     flash_attention_implementation: attention.Implementation = 'triton',
+#     num_diffusion_samples: int = 5,
+#     num_recycles: int = 10,
+#     return_embeddings: bool = False,
+# )
+    # eval: SampleConfig = base_config.autocreate(
+    #     num_samples=5,
+    #     steps=200,
+    # )
     def __init__(self, num_recycles: int = 10, num_samples: int = 5, diffusion_steps: int = 200):
         super(AlphaFold3, self).__init__()
 

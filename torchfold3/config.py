@@ -1,0 +1,1 @@
+_CUDA_LAYER_NORM_OPT = False
