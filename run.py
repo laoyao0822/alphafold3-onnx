@@ -728,7 +728,7 @@ def main(_):
             device = torch.device('cpu')
         else:
             # 使用第二张显卡
-            device = torch.device('cuda:1')
+            device = torch.device('cuda')
         
         print(f'Found local device: {device}')
         
