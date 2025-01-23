@@ -275,6 +275,10 @@ class LayerNorm(nn.Module):
         device="cuda",
         dtype=None,
     ) -> None:
+        if _CUDA_LAYER_NORM_OPT:
+            device = "cuda"
+        else:
+            device = "cpu"
         factory_kwargs = {"device": device, "dtype": dtype}
         super().__init__()
         if isinstance(normalized_shape, numbers.Integral):
