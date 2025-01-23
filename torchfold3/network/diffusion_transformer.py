@@ -19,7 +19,7 @@ import einops
 from torchfold3.network import atom_layout
 from torchfold3.network.layer_norm import LayerNorm
 from torchfold3.network.gated_linear_unit import gated_linear_unit
-from torchfold3.network.dot_product_attention import dot_product_attention_torch
+from torchfold3.network.dot_product_attention import dot_product_attention
 
 
 
@@ -176,7 +176,7 @@ class SelfAttention(nn.Module):
         q, k, v = map(lambda t: einops.rearrange(
             t, 'n (h c) -> h n c', h=self.num_head).unsqueeze(0), [q, k, v])
 
-        weighted_avg = dot_product_attention_torch(
+        weighted_avg = dot_product_attention(
             q, k, v, mask=mask, bias=pair_logits
         )
 

@@ -14,7 +14,7 @@ import torch
 import torch.nn as nn
 
 from torchfold3.network.layer_norm import LayerNorm
-from torchfold3.network.dot_product_attention import dot_product_attention_torch
+from torchfold3.network.dot_product_attention import dot_product_attention
 
 
 class GridSelfAttention(nn.Module):
@@ -45,7 +45,7 @@ class GridSelfAttention(nn.Module):
         q, k, v = map(lambda t: einops.rearrange(
             t, 'b n (h d) -> b h n d', h=self.num_head), [q, k, v])
 
-        weighted_avg = dot_product_attention_torch(q, k, v,
+        weighted_avg = dot_product_attention(q, k, v,
                                                     mask=mask,
                                                     bias=bias)
 
