@@ -10,7 +10,6 @@ dynamic = ["version"]
 dependencies = [
     "torch", 
     "einops",
-    "intel-extension-for-pytorch",
 ]
 
 [tool.setuptools]

@@ -8,3 +8,4 @@ build/**
 torchfold3/config.py
 **.gitignore**
 **ncu-rep**
+*.egg
