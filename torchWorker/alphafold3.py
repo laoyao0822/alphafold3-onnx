@@ -194,10 +194,12 @@ class AlphaFold3(nn.Module):
         batch = feat_batch.Batch.from_data_dict(batch)
         num_res = batch.num_res
         target_feat = self.create_target_feat_embedding(batch)
+        print("target_feat:",target_feat.device)
+        print("target_feat:",target_feat)
         print("num_res:",num_res)
         pair= torch.zeros([num_res, num_res, self.evoformer_pair_channel], device='cuda:1', dtype=torch.float32)
         single=torch.zeros(
-            [num_res, self.evoformer_seq_channel], dtype=torch.float32, device='cuda:1'
+            [num_res, self.evoformer_seq_channel], device='cuda:1'
         )
 
         for _ in range(self.num_recycles + 1):
@@ -206,8 +208,11 @@ class AlphaFold3(nn.Module):
         for _ in range(self.num_samples):
             self.confidence_head(num_res=num_res)
 
-        dist.recv(tensor=pair, src=0)
-        dist.recv(tensor=single, src=0)
+        # dist.recv(tensor=pair, src=0)
+        # dist.recv(tensor=single, src=0)
+        # dist.recv(tensor=target_feat, src=0)
+        print(target_feat)
+
         print("over")
         embeddings = {
             'pair': pair,

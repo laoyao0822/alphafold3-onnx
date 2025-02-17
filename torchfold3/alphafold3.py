@@ -361,26 +361,26 @@ class AlphaFold3(nn.Module):
         time1=time.time()
         print("start sample diffusion",positions.shape)
         print("positions0:",positions[0].shape)
-        # for sample_idx in range(num_samples):
-        #     for step_idx in range(self.diffusion_steps):
-        #         positions[sample_idx], noise_level[sample_idx] = self._apply_denoising_step(
-        #             batch, embeddings, positions[sample_idx], noise_level[sample_idx], mask, noise_levels[1 + step_idx])
+        for sample_idx in range(num_samples):
+            for step_idx in range(self.diffusion_steps):
+                positions[sample_idx], noise_level[sample_idx] = self._apply_denoising_step(
+                    batch, embeddings, positions[sample_idx], noise_level[sample_idx], mask, noise_levels[1 + step_idx])
 
-        for step_idx in range(self.diffusion_steps):
-            positions[0], noise_level[0] = self._apply_denoising_step(
-                batch, embeddings, positions[0], noise_level[0], mask, noise_levels[1 + step_idx])
-        for step_idx in range(self.diffusion_steps):
-            positions[1], noise_level[1] = self._apply_denoising_step(
-                batch, embeddings, positions[1], noise_level[1], mask, noise_levels[1 + step_idx])
-        for step_idx in range(self.diffusion_steps):
-            positions[2], noise_level[2] = self._apply_denoising_step(
-                batch, embeddings, positions[2], noise_level[2], mask, noise_levels[1 + step_idx])
-        for step_idx in range(self.diffusion_steps):
-            positions[3], noise_level[3] = self._apply_denoising_step(
-                batch, embeddings, positions[3], noise_level[3], mask, noise_levels[1 + step_idx])
-        for step_idx in range(self.diffusion_steps):
-            positions[4], noise_level[4] = self._apply_denoising_step(
-                batch, embeddings, positions[4], noise_level[4], mask, noise_levels[1 + step_idx])
+        # for step_idx in range(self.diffusion_steps):
+        #     positions[0], noise_level[0] = self._apply_denoising_step(
+        #         batch, embeddings, positions[0], noise_level[0], mask, noise_levels[1 + step_idx])
+        # for step_idx in range(self.diffusion_steps):
+        #     positions[1], noise_level[1] = self._apply_denoising_step(
+        #         batch, embeddings, positions[1], noise_level[1], mask, noise_levels[1 + step_idx])
+        # for step_idx in range(self.diffusion_steps):
+        #     positions[2], noise_level[2] = self._apply_denoising_step(
+        #         batch, embeddings, positions[2], noise_level[2], mask, noise_levels[1 + step_idx])
+        # for step_idx in range(self.diffusion_steps):
+        #     positions[3], noise_level[3] = self._apply_denoising_step(
+        #         batch, embeddings, positions[3], noise_level[3], mask, noise_levels[1 + step_idx])
+        # for step_idx in range(self.diffusion_steps):
+        #     positions[4], noise_level[4] = self._apply_denoising_step(
+        #         batch, embeddings, positions[4], noise_level[4], mask, noise_levels[1 + step_idx])
         print("sample diffusion time:",time.time()-time1)
         final_dense_atom_mask = torch.tile(mask[None], (num_samples, 1, 1))
 
@@ -415,10 +415,14 @@ class AlphaFold3(nn.Module):
                 prev=embeddings,
                 target_feat=target_feat
             )
-        # assert torch.allclose(target_feat, target_feat1, atol=1e-4, rtol=1e-4)
-        # print("✅ 功能测试通过")
-        dist.isend(tensor=embeddings['pair'], dst=1)
-        dist.isend(tensor=embeddings['single'], dst=1)
+        # print("pair",embeddings['pair'])
+        print("dtype",embeddings['pair'].dtype,embeddings['single'].dtype)
+        embeddings['pair']=embeddings['pair'].to(dtype=torch.bfloat16).contiguous()
+        # dist.send(tensor=embeddings['pair'], dst=1)
+        # dist.send(tensor=embeddings['single'], dst=1)
+
+        # dist.send(tensor=embeddings['target_feat'], dst=1)
+        # print("pair",embeddings['pair'])
         samples = self._sample_diffusion(batch, embeddings)
 
         confidence_output_per_sample = []

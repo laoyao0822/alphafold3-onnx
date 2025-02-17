@@ -131,21 +131,16 @@ class GridSelfAttention(nn.Module):
         dist.recv(tensor=combined_buffer, src=0)
 
 
-
-
         # 按顺序拆分张量
         pair = combined_buffer[:pair_size].view(seq_len, seq_len,self.c_pair)
         mask = combined_buffer[pair_size: pair_size + mask_size].view(seq_len, seq_len)
         # bias = combined_buffer[pair_size + mask_size:].view(self.num_head , seq_len, seq_len)
-
 
         q2 = self.q_projection2(pair)
         k2 = self.k_projection2(pair)
         v2 = self.v_projection2(pair)
         q2,k2,v2= map(lambda t: einops.rearrange(
              t, 'b n (h d) -> b h n d', h=self.num_head//2), [q2,k2,v2])
-
-
 
         bias2 = self.pair_bias_projection2(pair).permute(2, 0, 1)
 
@@ -159,7 +154,7 @@ class GridSelfAttention(nn.Module):
 
         weighted_avg2 *= torch.sigmoid(gate_values2)
         out_proj2 = self.output_projection2(weighted_avg2).contiguous()
-        print("out_proj2",out_proj2.shape,out_proj2.dtype)
+        # print("out_proj2",out_proj2.shape,out_proj2.dtype)
         dist.isend(tensor=out_proj2, dst=0)
         # return out_proj2
 

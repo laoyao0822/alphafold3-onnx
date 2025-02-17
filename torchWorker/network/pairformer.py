@@ -52,9 +52,7 @@ class PairformerBlock(nn.Module):
 
     def forward(self,num_res) :
         self.pair_attention1(num_res)
-        # print("pair_attention1")
         self.pair_attention2(num_res)
-        # print("pair_attention2")
 
 class EvoformerBlock(nn.Module):
     def __init__(self, c_msa: int = 64, c_pair: int = 128, n_heads_pair: int = 4) -> None:
@@ -68,7 +66,6 @@ class EvoformerBlock(nn.Module):
     def forward(
         self,num_res
     ) :
-        print("num_res",num_res)
         #([107, 107])
         self.pair_attention1(num_res=num_res)
         self.pair_attention2(num_res=num_res)
