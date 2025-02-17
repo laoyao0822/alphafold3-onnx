@@ -261,6 +261,27 @@ _SAVE_EMBEDDINGS = flags.DEFINE_bool(
     'Whether to save the final trunk single and pair embeddings in the output.',
 )
 
+_RANK_ = flags.DEFINE_integer(
+    'rank',
+    0,
+    'Number of the pipeline Chunk.',
+)
+_WOLRD_SIZE = flags.DEFINE_integer(
+    'world_size',
+    2,
+    'Number of THE world Size.',
+)
+import torch.distributed as dist
+def setup(rank, world_size):
+    print("start to set up multi gpu","rank:",rank,"world_size:",world_size)
+    dist.init_process_group(
+        backend='nccl',
+        init_method='tcp://127.0.0.1:8802',
+        rank=rank,
+        world_size=world_size,
+        device_id=torch.device(f"cuda:{rank}")
+    )
+    torch.cuda.set_device(rank)
 
 class ModelRunner:
     """Helper class to run structure prediction stages."""
@@ -278,7 +299,11 @@ class ModelRunner:
         print('loading the model parameters...')
         import_jax_weights_(self._model, model_dir)
 
-        self._model = self._model.to(device=self._device)
+        rank = _RANK_.value
+        setup(_RANK_.value, _WOLRD_SIZE.value)
+        torch.cuda.set_device(rank)
+        self._model = self._model.to(f"cuda:{rank}")
+        # self._model = self._model.to(device=self._device)
         
         # Apply IPEX optimization for CPU if device is CPU
         if _CPU_INFERENCE.value:
@@ -761,7 +786,7 @@ def main(_):
         num_fold_inputs += 1
 
     print(f'Done processing {num_fold_inputs} fold inputs.')
-
+    dist.destroy_process_group()
 
 if __name__ == '__main__':
     flags.mark_flags_as_required([

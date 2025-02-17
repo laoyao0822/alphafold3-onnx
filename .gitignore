@@ -9,3 +9,4 @@ torchfold3/config.py
 **.gitignore**
 **ncu-rep**
 *.egg
+./alphafold3

@@ -7,6 +7,7 @@ import triton.language as tl
 
 from torchfold3.config import _TRITON_DPA_OPT
 
+# _TRITON_DPA_OPT=False
 
 def dot_product_attention_torch(q: torch.Tensor,
                                 k: torch.Tensor,

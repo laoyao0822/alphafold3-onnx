@@ -1185,7 +1185,7 @@ def get_translation_dict(model):
 
 # 最激动人心的一集
 def import_jax_weights_(model, model_path: pathlib.Path):
-    params = get_model_haiku_params_to_torch(model_path / "af3.bin.zst")
+    params = get_model_haiku_params_to_torch(model_path / "af3.bin")
 
     translations = get_translation_dict(model)
 
