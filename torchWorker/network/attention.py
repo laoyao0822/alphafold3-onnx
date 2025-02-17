@@ -15,7 +15,8 @@ import torch.nn as nn
 from torch.nn import Linear
 from torch import distributed as dist
 
-from torchWorker.network.dot_product_attention import dot_product_attention
+from torchWorker.network.dot_product_attention import dot_product_attention, dot_product_attention_triton
+
 
 # from torchWorker.network.dot_product_attention import dot_product_attention_torch
 
@@ -80,6 +81,7 @@ class GridSelfAttention(nn.Module):
         self.qkv_dim = self.c_pair // self.num_head
         self.transpose = transpose
         self.block_shape=None
+        self.world_size=dist.get_world_size()
         self.pair_bias_projection = nn.Linear(
             self.c_pair, self.num_head, bias=False)
 
@@ -94,40 +96,47 @@ class GridSelfAttention(nn.Module):
             self.c_pair, self.c_pair, bias=False)
 
         self.output_projection2 = nn.Linear(
-            self.c_pair//2, self.c_pair, bias=False)
-        self.q_projection2 = nn.Linear(self.c_pair, self.c_pair//2, bias=False)
-        self.k_projection2 = nn.Linear(self.c_pair, self.c_pair//2, bias=False)
-        self.v_projection2 = nn.Linear(self.c_pair, self.c_pair//2, bias=False)
+            self.c_pair//self.world_size, self.c_pair, bias=False)
+        self.q_projection2 = nn.Linear(self.c_pair, self.c_pair//self.world_size, bias=False)
+        self.k_projection2 = nn.Linear(self.c_pair, self.c_pair//self.world_size, bias=False)
+        self.v_projection2 = nn.Linear(self.c_pair, self.c_pair//self.world_size, bias=False)
+        self.pair_bias_projection2 = nn.Linear(
+            self.c_pair, self.num_head // self.world_size, bias=False)
         self.isFirst=True
     def chunk_weight(self):
         if self.isFirst:
             with torch.no_grad():
                 # print("first")
                 # self.num_head = self.num_head // 2
-                self.q_projection2.weight.data = self.q_projection.weight.data[self.c_pair // 2:, :]
-                self.k_projection2.weight.data = self.k_projection.weight.data[self.c_pair // 2:, :]
-                self.v_projection2.weight.data = self.v_projection.weight.data[self.c_pair // 2:, :]
-                self.gating_query2.weight.data = self.gating_query.weight.data[self.c_pair // 2:, :]
-                self.output_projection2.weight.data = self.output_projection.weight.data[:, self.c_pair // 2:]
+                self.q_projection2.weight.data = self.q_projection.weight.data[self.c_pair // self.world_size:, :]
+                self.k_projection2.weight.data = self.k_projection.weight.data[self.c_pair // self.world_size:, :]
+                self.v_projection2.weight.data = self.v_projection.weight.data[self.c_pair // self.world_size:, :]
+                self.gating_query2.weight.data = self.gating_query.weight.data[self.c_pair // self.world_size:, :]
+                self.output_projection2.weight.data = self.output_projection.weight.data[:, self.c_pair // self.world_size:]
+                self.pair_bias_projection2.weight.data = self.pair_bias_projection.weight.data[self.num_head // self.world_size:,:]
                 self.isFirst = False
 
-    def _attention(self):
+    def _attention(self,num_res):
 
-        seq_len=583
+        seq_len=num_res
 
         pair_size = seq_len * seq_len * self.c_pair
         mask_size = seq_len * seq_len
-        bias_size = (self.num_head) * seq_len * seq_len
-        total_size = pair_size + mask_size + bias_size
+
+
+        total_size = pair_size + mask_size
 
         combined_buffer = torch.zeros(total_size, dtype=torch.bfloat16, device='cuda:1').contiguous()
         # print("start to receive",combined_buffer.shape)
         dist.recv(tensor=combined_buffer, src=0)
 
+
+
+
         # 按顺序拆分张量
         pair = combined_buffer[:pair_size].view(seq_len, seq_len,self.c_pair)
         mask = combined_buffer[pair_size: pair_size + mask_size].view(seq_len, seq_len)
-        bias = combined_buffer[pair_size + mask_size:].view(self.num_head , seq_len, seq_len)
+        # bias = combined_buffer[pair_size + mask_size:].view(self.num_head , seq_len, seq_len)
 
 
         q2 = self.q_projection2(pair)
@@ -137,32 +146,31 @@ class GridSelfAttention(nn.Module):
              t, 'b n (h d) -> b h n d', h=self.num_head//2), [q2,k2,v2])
 
 
-        gate_values2 = self.gating_query2(pair)
 
-        bias2 = bias.chunk(2, dim=0)[1]
+        bias2 = self.pair_bias_projection2(pair).permute(2, 0, 1)
 
-        weighted_avg2=dot_product_attention(q2, k2, v2,
+        weighted_avg2=dot_product_attention_triton(q2, k2, v2,
                                                     mask=mask,
                                                     bias=bias2)
         weighted_avg2 = einops.rearrange(weighted_avg2, 'b h n d -> b n (h d)', h=self.num_head//2)
 
 
+        gate_values2 = self.gating_query2(pair)
 
         weighted_avg2 *= torch.sigmoid(gate_values2)
         out_proj2 = self.output_projection2(weighted_avg2).contiguous()
-        # print("out_proj2",out_proj2.shape,out_proj2.dtype)
-        # print("attention done")
+        print("out_proj2",out_proj2.shape,out_proj2.dtype)
         dist.isend(tensor=out_proj2, dst=0)
         # return out_proj2
 
-    def forward(self):
+    def forward(self,num_res):
 
         # print("start forward")
         self.chunk_weight()
 
 
         # print("success receive",pair.shape,mask.shape,bias.shape)
-        self._attention()
+        self._attention(num_res)
         # print("out_proj mask")
 
         # print("send done")

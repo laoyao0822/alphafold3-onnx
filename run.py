@@ -268,7 +268,7 @@ _RANK_ = flags.DEFINE_integer(
 )
 _WOLRD_SIZE = flags.DEFINE_integer(
     'world_size',
-    2,
+    1,
     'Number of THE world Size.',
 )
 import torch.distributed as dist
@@ -293,14 +293,15 @@ class ModelRunner:
     ):
         self._model_dir = model_dir
         self._device = device
-
+        rank = _RANK_.value
+        if _WOLRD_SIZE.value > 1:
+            setup(_RANK_.value, _WOLRD_SIZE.value)
         self._model = AlphaFold3(num_samples=_NUM_DIFFUSION_SAMPLES.value)
         self._model.eval()
         print('loading the model parameters...')
         import_jax_weights_(self._model, model_dir)
 
-        rank = _RANK_.value
-        setup(_RANK_.value, _WOLRD_SIZE.value)
+
         torch.cuda.set_device(rank)
         self._model = self._model.to(f"cuda:{rank}")
         # self._model = self._model.to(device=self._device)
@@ -786,7 +787,8 @@ def main(_):
         num_fold_inputs += 1
 
     print(f'Done processing {num_fold_inputs} fold inputs.')
-    dist.destroy_process_group()
+    if _WOLRD_SIZE.value > 1:
+        dist.destroy_process_group()
 
 if __name__ == '__main__':
     flags.mark_flags_as_required([

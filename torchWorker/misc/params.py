@@ -356,6 +356,54 @@ def LayerNormParams(l, use_bias=True):
 
     return d
 
+def AdaptiveLayerNormParams(aln, use_single_cond=False):
+    if use_single_cond is False:
+        return {
+            "layer_norm": LayerNormParams(aln.layer_norm),
+        }
+    else:
+        return {
+            "single_cond_layer_norm": LayerNormParams(aln.single_cond_layer_norm, use_bias=False),
+            "single_cond_scale": LinearParams(aln.single_cond_scale, use_bias=True),
+            "single_cond_bias": LinearParams(aln.single_cond_bias),
+        }
+
+# ref alphafold3/model/diffusion/diffusion/diffusion_transformer.py:adaptive_zero_init
+def AdaLNZeroParams(ada_ln_zero, use_single_cond=False):
+    d = {
+        "transition2": LinearParams(ada_ln_zero.transition2),
+    }
+
+    if use_single_cond is True:
+        d.update({
+            "adaptive_zero_cond": LinearParams(ada_ln_zero.adaptive_zero_cond, use_bias=True),
+        })
+
+    return d
+
+def TriMulParams(tri_mul): return {
+    "left_norm_input": LayerNormParams(tri_mul.left_norm_input),
+    "projection": LinearParams(tri_mul.projection),
+    "gate": LinearParams(tri_mul.gate),
+    "center_norm": LayerNormParams(tri_mul.center_norm),
+    "output_projection": LinearParams(tri_mul.output_projection),
+    "gating_linear": LinearParams(tri_mul.gating_linear)
+}
+
+def OuterProductMeanParams(outer_product_mean): return {
+    "layer_norm_input": LayerNormParams(outer_product_mean.layer_norm_input),
+    "left_projection": LinearParams(outer_product_mean.left_projection),
+    "right_projection": LinearParams(outer_product_mean.right_projection),
+    "output_w": Param(outer_product_mean.output_w),
+    "output_b": Param(outer_product_mean.output_b),
+}
+
+
+def TransitionParams(transition): return {
+    "input_layer_norm": LayerNormParams(transition.input_layer_norm),
+    "transition1": LinearParams(transition.transition1),
+    "transition2": LinearParams(transition.transition2),
+}
 
 
 
@@ -367,6 +415,135 @@ def GridSelfAttentionParams(pair_attention): return {
     "gating_query": LinearParams(pair_attention.gating_query, already_transpose_weights=True),
     "output_projection": LinearParams(pair_attention.output_projection),
 }
+
+def SelfAttentionParams(self_attention, use_single_cond=False):
+    return {
+        "q_projection": LinearHMAParams(self_attention.q_projection, use_bias=True),
+        "k_projection": LinearHMAParams(self_attention.k_projection),
+        "v_projection": LinearHMAParams(self_attention.v_projection),
+        "gating_query": LinearParams(self_attention.gating_query),
+        "transition2": LinearParams(self_attention.adaptive_zero_init.transition2),
+        **AdaptiveLayerNormParams(self_attention.adaptive_layernorm, use_single_cond),
+        **AdaLNZeroParams(self_attention.adaptive_zero_init, use_single_cond),
+    }
+
+
+def CrossAttentionParams(cross_attention): return {
+    **cat_params(AdaptiveLayerNormParams(cross_attention.q_adaptive_layernorm, use_single_cond=True), "q"),
+    **cat_params(AdaptiveLayerNormParams(cross_attention.k_adaptive_layernorm, use_single_cond=True), "k"),
+    "q_projection": LinearHMAParams(cross_attention.q_projection, use_bias=True),
+    "k_projection": LinearHMAParams(cross_attention.k_projection),
+    "v_projection": LinearHMAParams(cross_attention.v_projection),
+    "gating_query": LinearParams(cross_attention.gating_query),
+    **AdaLNZeroParams(cross_attention.adaptive_zero_init, use_single_cond=True),
+}
+
+
+def MSAAttentionParams(msa_attention): return {
+    "act_norm": LayerNormParams(msa_attention.act_norm),
+    "pair_norm": LayerNormParams(msa_attention.pair_norm),
+    "pair_logits": LinearParams(msa_attention.pair_logits),
+    "v_projection": LinearHMAParams(msa_attention.v_projection),
+    "gating_query": LinearParams(msa_attention.gating_query),
+    "output_projection": LinearParams(msa_attention.output_projection),
+}
+
+
+def DiffusionTransitionParams(transition, use_single_cond=False):
+    return {
+        **AdaptiveLayerNormParams(transition.adaptive_layernorm, use_single_cond),
+        "transition1": LinearParams(transition.transition1),
+        **AdaLNZeroParams(transition.adaptive_zero_init, use_single_cond),
+    }
+
+
+def DiffusionTransformerParams(transformer):
+    self_attention_params = stacked([SelfAttentionParams(
+        l, use_single_cond=True) for l in transformer.self_attention])
+    transistion_params = stacked([DiffusionTransitionParams(
+        l, use_single_cond=True) for l in transformer.transition_block])
+
+    return {
+        "pair_input_layer_norm": LayerNormParams(transformer.pair_input_layer_norm, use_bias=False),
+        "__layer_stack_with_per_layer/pair_logits_projection": stacked(
+            [LinearHMAParams(l) for l in transformer.pair_logits_projection]),
+        **cat_params(self_attention_params, "__layer_stack_with_per_layer/__layer_stack_with_per_layer/transformer"),
+        **cat_params(transistion_params, "__layer_stack_with_per_layer/__layer_stack_with_per_layer/transformerffw_"),
+    }
+
+
+def DiffusionCrossAttTransformerParams(transformer, prefix="diffusion_atom_transformer_encoder"):
+    cross_attention_params = stacked([CrossAttentionParams(
+        l) for l in transformer.cross_attention])
+    transistion_params = stacked([DiffusionTransitionParams(
+        l, use_single_cond=True) for l in transformer.transition_block])
+
+    return {
+        "pair_input_layer_norm": LayerNormParams(transformer.pair_input_layer_norm, use_bias=False),
+        "pair_logits_projection": LinearHMAParams(transformer.pair_logits_projection),
+        **cat_params(cross_attention_params, f"__layer_stack_with_per_layer/{prefix}"),
+        **cat_params(transistion_params, f"__layer_stack_with_per_layer/{prefix}ffw_"),
+    }
+
+
+def AtomCrossAttEncoderParams(encoder,
+                              with_token_atoms_act=False,
+                              with_trunk_single_cond=False,
+                              with_trunk_pair_cond=False,
+                              prefix="evoformer_conditioning_atom_transformer_encoder"):
+    d = {
+        "embed_ref_pos": LinearParams(encoder.embed_ref_pos),
+        "embed_ref_mask": LinearParams(encoder.embed_ref_mask),
+        "embed_ref_element": LinearParams(encoder.embed_ref_element),
+        "embed_ref_charge": LinearParams(encoder.embed_ref_charge),
+        "embed_ref_atom_name": LinearParams(encoder.embed_ref_atom_name),
+        "single_to_pair_cond_row": LinearParams(encoder.single_to_pair_cond_row),
+        "single_to_pair_cond_col": LinearParams(encoder.single_to_pair_cond_col),
+        "embed_pair_offsets": LinearParams(encoder.embed_pair_offsets),
+        "embed_pair_distances": LinearParams(encoder.embed_pair_distances),
+        "single_to_pair_cond_row_1": LinearParams(encoder.single_to_pair_cond_row_1),
+        "single_to_pair_cond_col_1": LinearParams(encoder.single_to_pair_cond_col_1),
+        "embed_pair_offsets_1": LinearParams(encoder.embed_pair_offsets_1),
+        "embed_pair_distances_1": LinearParams(encoder.embed_pair_distances_1),
+        "embed_pair_offsets_valid": LinearParams(encoder.embed_pair_offsets_valid),
+        "pair_mlp_1": LinearParams(encoder.pair_mlp_1),
+        "pair_mlp_2": LinearParams(encoder.pair_mlp_2),
+        "pair_mlp_3": LinearParams(encoder.pair_mlp_3),
+        "atom_transformer_encoder": DiffusionCrossAttTransformerParams(encoder.atom_transformer_encoder, prefix=prefix),
+        "project_atom_features_for_aggr": LinearParams(encoder.project_atom_features_for_aggr),
+    }
+
+    if with_token_atoms_act is True:
+        d.update({
+            "atom_positions_to_features": LinearParams(encoder.atom_positions_to_features),
+        })
+
+    if with_trunk_single_cond is True:
+        d.update({
+            "lnorm_trunk_single_cond": LayerNormParams(encoder.lnorm_trunk_single_cond, use_bias=False),
+            "embed_trunk_single_cond": LinearParams(encoder.embed_trunk_single_cond),
+        })
+
+    if with_trunk_pair_cond:
+        d.update({
+            "lnorm_trunk_pair_cond": LayerNormParams(encoder.lnorm_trunk_pair_cond, use_bias=False),
+            "embed_trunk_pair_cond": LinearParams(encoder.embed_trunk_pair_cond),
+        })
+
+    return d
+
+
+def AtomCrossAttDecoderParams(decoder): return {
+    "project_token_features_for_broadcast": LinearParams(decoder.project_token_features_for_broadcast),
+    "atom_transformer_decoder": DiffusionCrossAttTransformerParams(decoder.atom_transformer_decoder, prefix="diffusion_atom_transformer_decoder"),
+    "atom_features_layer_norm": LayerNormParams(decoder.atom_features_layer_norm, use_bias=False),
+    "atom_features_to_position_update": LinearParams(decoder.atom_features_to_position_update),
+}
+
+
+
+
+
 
 
 def TemplateEmbeddingParams(template_embedding):
@@ -424,11 +601,35 @@ def EvoformerParams(evoformer):
     }
 
 
-
+def DiffusionHeadParams(head):
+    return {
+        "pair_cond_initial_norm": LayerNormParams(head.pair_cond_initial_norm, use_bias=False),
+        "pair_cond_initial_projection": LinearParams(head.pair_cond_initial_projection),
+        **cat_params(DiffusionTransitionParams(head.pair_transition_0), "pair_transition_0ffw_"),
+        **cat_params(DiffusionTransitionParams(head.pair_transition_1), "pair_transition_1ffw_"),
+        "single_cond_initial_norm": LayerNormParams(head.single_cond_initial_norm, use_bias=False),
+        "single_cond_initial_projection": LinearParams(head.single_cond_initial_projection),
+        "noise_embedding_initial_norm": LayerNormParams(head.noise_embedding_initial_norm, use_bias=False),
+        "noise_embedding_initial_projection": LinearParams(head.noise_embedding_initial_projection),
+        **cat_params(DiffusionTransitionParams(head.single_transition_0), "single_transition_0ffw_"),
+        **cat_params(DiffusionTransitionParams(head.single_transition_1), "single_transition_1ffw_"),
+        **cat_params(AtomCrossAttEncoderParams(head.atom_cross_att_encoder,
+                                               with_token_atoms_act=True,
+                                               with_trunk_pair_cond=True,
+                                               with_trunk_single_cond=True,
+                                               prefix="diffusion_atom_transformer_encoder"), "diffusion_"),
+        "single_cond_embedding_norm": LayerNormParams(head.single_cond_embedding_norm, use_bias=False),
+        "single_cond_embedding_projection": LinearParams(head.single_cond_embedding_projection),
+        "transformer": DiffusionTransformerParams(head.transformer),
+        "output_norm": LayerNormParams(head.output_norm, use_bias=False),
+        **cat_params(AtomCrossAttDecoderParams(head.atom_cross_att_decoder), "diffusion_")
+    }
 def get_translation_dict(model):
     translations = {
-
+        **cat_params(AtomCrossAttEncoderParams(model.evoformer_conditioning), "evoformer_conditioning_"),
         "evoformer": EvoformerParams(model.evoformer),
+        "~/diffusion_head": DiffusionHeadParams(model.diffusion_head),
+
         "confidence_head": ConfidenceHeadParams(model.confidence_head),
     }
 

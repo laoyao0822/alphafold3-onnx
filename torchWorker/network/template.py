@@ -30,12 +30,12 @@ class TemplateEmbedding(nn.Module):
         self.single_template_embedding = SingleTemplateEmbedding()
 
     def forward(
-        self,
+        self,num_res
     ) :
         num_templates=4
         for template_idx in range(num_templates):
 
-           self.single_template_embedding()
+           self.single_template_embedding(num_res)
         return
 
 class SingleTemplateEmbedding(nn.Module):
@@ -49,10 +49,10 @@ class SingleTemplateEmbedding(nn.Module):
              for _ in range(self.template_stack_num_layer)]
         )
     def forward(
-        self,
+        self,num_res
     ) :
         for pairformer_block in self.template_embedding_iteration:
-            pairformer_block()
+            pairformer_block(num_res)
 
 
 

@@ -40,7 +40,7 @@ class ConfidenceHead(nn.Module):
         ])
 
     def forward(
-        self,
+        self,num_res
     ) :
         """
         Args:
@@ -54,7 +54,7 @@ class ConfidenceHead(nn.Module):
         """
         # pairformer stack
         for layer in self.confidence_pairformer:
-            layer()
+            layer(num_res)
 
 
 

@@ -16,10 +16,10 @@ import torch.nn as nn
 import torch.nn.functional as F
 import einops
 
-from torchfold3.network import atom_layout
-from torchfold3.network.layer_norm import LayerNorm
-from torchfold3.network.gated_linear_unit import gated_linear_unit
-from torchfold3.network.dot_product_attention import dot_product_attention
+from torchWorker.network import atom_layout
+from torchWorker.network.layer_norm import LayerNorm
+from torchWorker.network.gated_linear_unit import gated_linear_unit
+from torchWorker.network.dot_product_attention import dot_product_attention
 
 
 

@@ -50,13 +50,10 @@ class PairformerBlock(nn.Module):
         )
 
 
-    def forward(
-        self,
-
-    ) :
-        self.pair_attention1()
+    def forward(self,num_res) :
+        self.pair_attention1(num_res)
         # print("pair_attention1")
-        self.pair_attention2()
+        self.pair_attention2(num_res)
         # print("pair_attention2")
 
 class EvoformerBlock(nn.Module):
@@ -69,10 +66,11 @@ class EvoformerBlock(nn.Module):
             c_pair=c_pair, num_head=n_heads_pair, transpose=True
         )
     def forward(
-        self,
+        self,num_res
     ) :
+        print("num_res",num_res)
         #([107, 107])
-        self.pair_attention1()
-        self.pair_attention2()
+        self.pair_attention1(num_res=num_res)
+        self.pair_attention2(num_res=num_res)
 
         return
