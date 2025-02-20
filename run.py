@@ -53,7 +53,7 @@ from torchfold3.alphafold3 import AlphaFold3
 from torchfold3.misc.params import import_jax_weights_
 
 from torchfold3.config import *
-
+import time
 
 _HOME_DIR = pathlib.Path(os.environ.get('HOME'))
 DEFAULT_MODEL_DIR = _HOME_DIR / 'models/model_103275239_1'
@@ -105,7 +105,7 @@ _CPU_INFERENCE = flags.DEFINE_bool(
 # control the number of threads used by the data pipeline.
 _NUM_THREADS = flags.DEFINE_integer(
     'num_cpu_threads',
-    16,
+    32,
     'Number of threads to use for the data pipeline.',
 )
 
@@ -272,16 +272,26 @@ _WOLRD_SIZE = flags.DEFINE_integer(
     'Number of THE world Size.',
 )
 import torch.distributed as dist
-def setup(rank, world_size):
-    print("start to set up multi gpu","rank:",rank,"world_size:",world_size)
-    dist.init_process_group(
-        backend='nccl',
-        init_method='tcp://127.0.0.1:8802',
-        rank=rank,
-        world_size=world_size,
-        device_id=torch.device(f"cuda:{rank}")
-    )
-    torch.cuda.set_device(rank)
+def setup(rank, world_size,init_method='tcp://127.0.0.1:8802'):
+    if _CPU_INFERENCE.value:
+        print("start to set up multi cpu","rank:",rank,"world_size:",world_size)
+        dist.init_process_group(
+            backend='gloo',
+            init_method=init_method,
+            rank=rank,
+            world_size=world_size,
+        )
+    else:
+        print("start to set up multi gpu", "rank:", rank, "world_size:", world_size)
+        dist.init_process_group(
+            backend='nccl',
+            init_method='tcp://127.0.0.1:8802',
+            rank=rank,
+            world_size=world_size,
+            device_id=torch.device(f"cuda:{rank}")
+        )
+        torch.cuda.set_device(rank)
+
 
 class ModelRunner:
     """Helper class to run structure prediction stages."""
@@ -294,16 +304,14 @@ class ModelRunner:
         self._model_dir = model_dir
         self._device = device
         rank = _RANK_.value
-        if _WOLRD_SIZE.value > 1:
-            setup(_RANK_.value, _WOLRD_SIZE.value)
+        setup(_RANK_.value, _WOLRD_SIZE.value)
         self._model = AlphaFold3(num_samples=_NUM_DIFFUSION_SAMPLES.value)
         self._model.eval()
         print('loading the model parameters...')
         import_jax_weights_(self._model, model_dir)
 
 
-        torch.cuda.set_device(rank)
-        self._model = self._model.to(f"cuda:{rank}")
+
         # self._model = self._model.to(device=self._device)
         
         # Apply IPEX optimization for CPU if device is CPU
@@ -314,11 +322,14 @@ class ModelRunner:
                 self._model = ipex.optimize(self._model,weights_prepack=False,optimize_lstm=True,auto_kernel_selection=True,dtype=torch.bfloat16)
                 
             if _CPU_FLUSH_DENORM_OPT:
+
                 torch.set_flush_denormal(True)
                 
             # self._model = torch.compile(self._model,backend="ipex")
             
         if _CPU_INFERENCE.value == False:
+            torch.cuda.set_device(rank)
+            self._model = self._model.to(f"cuda:{rank}")
             print("Applying CUDA optimizations...")
             # print(torch._dynamo.list_backends())
             # self._model = torch.compile(self._model,backend="inductor",dynamic=False)
@@ -787,8 +798,10 @@ def main(_):
         num_fold_inputs += 1
 
     print(f'Done processing {num_fold_inputs} fold inputs.')
-    if _WOLRD_SIZE.value > 1:
-        dist.destroy_process_group()
+    # if _WOLRD_SIZE.value > 1:
+    print("Destroying the process group")
+    dist.barrier()
+    dist.destroy_process_group()
 
 if __name__ == '__main__':
     flags.mark_flags_as_required([

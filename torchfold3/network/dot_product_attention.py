@@ -45,8 +45,8 @@ def dot_product_attention(q: torch.Tensor,
         v = v.unsqueeze(0)
 
     if _TRITON_DPA_OPT == False:
-        # out = dot_product_attention_torch(q, k, v, mask, bias)
-        out = dot_product_attention_flex(q, k, v, mask, bias)
+        out = dot_product_attention_torch(q, k, v, mask, bias)
+        # out = dot_product_attention_flex(q, k, v, mask, bias)
     elif _TRITON_DPA_OPT:
         if k.shape[-1] not in {16, 32, 64, 128}:
             out = dot_product_attention_torch(q, k, v, mask, bias)

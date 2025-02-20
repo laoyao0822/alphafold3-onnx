@@ -14,7 +14,7 @@ import torch
 import torch.nn as nn
 from torch.nn import Linear
 from torch import distributed as dist
-
+import torchWorker.config as config
 from torchWorker.network.dot_product_attention import dot_product_attention, dot_product_attention_triton
 
 
@@ -82,6 +82,9 @@ class GridSelfAttention(nn.Module):
         self.transpose = transpose
         self.block_shape=None
         self.world_size=dist.get_world_size()
+        if self.world_size>2:
+            self.world_size=2
+        self.rank=dist.get_rank()
         self.pair_bias_projection = nn.Linear(
             self.c_pair, self.num_head, bias=False)
 
@@ -117,7 +120,7 @@ class GridSelfAttention(nn.Module):
                 self.isFirst = False
 
     def _attention(self,num_res):
-
+        print("attention device:",self.q_projection.weight.device)
         seq_len=num_res
 
         pair_size = seq_len * seq_len * self.c_pair
@@ -126,7 +129,7 @@ class GridSelfAttention(nn.Module):
 
         total_size = pair_size + mask_size
 
-        combined_buffer = torch.zeros(total_size, dtype=torch.bfloat16, device='cuda:1').contiguous()
+        combined_buffer = torch.zeros(total_size, dtype=torch.bfloat16).cuda().contiguous()
         # print("start to receive",combined_buffer.shape)
         dist.recv(tensor=combined_buffer, src=0)
 
@@ -134,7 +137,6 @@ class GridSelfAttention(nn.Module):
         # 按顺序拆分张量
         pair = combined_buffer[:pair_size].view(seq_len, seq_len,self.c_pair)
         mask = combined_buffer[pair_size: pair_size + mask_size].view(seq_len, seq_len)
-        # bias = combined_buffer[pair_size + mask_size:].view(self.num_head , seq_len, seq_len)
 
         q2 = self.q_projection2(pair)
         k2 = self.k_projection2(pair)
@@ -143,7 +145,6 @@ class GridSelfAttention(nn.Module):
              t, 'b n (h d) -> b h n d', h=self.num_head//2), [q2,k2,v2])
 
         bias2 = self.pair_bias_projection2(pair).permute(2, 0, 1)
-
         weighted_avg2=dot_product_attention_triton(q2, k2, v2,
                                                     mask=mask,
                                                     bias=bias2)
@@ -159,13 +160,14 @@ class GridSelfAttention(nn.Module):
         # return out_proj2
 
     def forward(self,num_res):
-
+        if self.rank==1 and num_res>500 and config._GridAttention_TP :
+            print(""   )
+            self.chunk_weight()
+            self._attention(num_res)
         # print("start forward")
-        self.chunk_weight()
 
 
         # print("success receive",pair.shape,mask.shape,bias.shape)
-        self._attention(num_res)
         # print("out_proj mask")
 
         # print("send done")

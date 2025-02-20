@@ -267,6 +267,8 @@ class AlphaFold3(nn.Module):
         self.num_recycles = num_recycles
         self.num_samples = num_samples
         self.diffusion_steps = diffusion_steps
+        self.world_size = dist.get_world_size()
+        self.rank = dist.get_rank()
 
         self.gamma_0 = 0.8
         self.gamma_min = 1.0
@@ -354,34 +356,64 @@ class AlphaFold3(nn.Module):
             torch.linspace(0, 1, self.diffusion_steps + 1, device=device))
 
         positions = torch.randn(
-            (num_samples,) + mask.shape + (3,), device=device)
+            (num_samples,) + mask.shape + (3,), device=device,dtype=torch.float32)
         positions *= noise_levels[0]
 
         noise_level = torch.tile(noise_levels[None, 0], (num_samples,))
         time1=time.time()
-        print("start sample diffusion",positions.shape)
-        print("positions0:",positions[0].shape)
-        for sample_idx in range(num_samples):
+        # print("start sample diffusion",self.num_samples,"-",positions.shape)
+
+
+        if self.world_size==1:
+            for sample_idx in range(self.num_samples):
+                print("sample_idx", sample_idx)
+                for step_idx in range(self.diffusion_steps):
+                    positions[sample_idx], noise_level[sample_idx] = self._apply_denoising_step(
+                        batch, embeddings, positions[sample_idx], noise_level[sample_idx], mask,
+                        noise_levels[1 + step_idx])
+        elif self.world_size==2:
+            rec_1 = dist.irecv(tensor=positions[3], src=1)
+            rec_2 = dist.irecv(tensor=positions[4], src=1)
+            for sample_idx in (0, 1,2):
+                print("sample_idx", sample_idx)
+                for step_idx in range(self.diffusion_steps):
+                    positions[sample_idx], noise_level[sample_idx] = self._apply_denoising_step(
+                        batch, embeddings, positions[sample_idx], noise_level[sample_idx], mask,
+                        noise_levels[1 + step_idx])
+            # print("positions", positions.shape, positions.dtype)
+            rec_1.wait()
+            rec_2.wait()
+        elif self.world_size==3 or self.world_size==4:
+            for sample_idx in (0, 1):
+                print("sample_idx", sample_idx)
+                for step_idx in range(self.diffusion_steps):
+                    positions[sample_idx], noise_level[sample_idx] = self._apply_denoising_step(
+                        batch, embeddings, positions[sample_idx], noise_level[sample_idx], mask,
+                        noise_levels[1 + step_idx])
+            # print("positions", positions.shape, positions.dtype)
+            dist.recv(tensor=positions[2], src=2)
+            dist.barrier(group=dist.group.WORLD)
+            dist.recv(tensor=positions[3], src=1)
+            dist.recv(tensor=positions[4], src=1)
+        elif self.world_size==5:
+            sample_idx=0
+            print("sample_idx", sample_idx)
             for step_idx in range(self.diffusion_steps):
                 positions[sample_idx], noise_level[sample_idx] = self._apply_denoising_step(
-                    batch, embeddings, positions[sample_idx], noise_level[sample_idx], mask, noise_levels[1 + step_idx])
+                    batch, embeddings, positions[sample_idx], noise_level[sample_idx], mask,
+                    noise_levels[1 + step_idx])
+            # dist.barrier(group=dist.group.WORLD)
+            positions=positions.contiguous()
+            recs=[]
+            for sample_idx in range(1, self.num_samples):
+                # print("rec sample_idx", sample_idx)
+                recs.append(dist.irecv(tensor=positions[sample_idx], src=sample_idx))
+            for rec in recs:
+                rec.wait()
 
-        # for step_idx in range(self.diffusion_steps):
-        #     positions[0], noise_level[0] = self._apply_denoising_step(
-        #         batch, embeddings, positions[0], noise_level[0], mask, noise_levels[1 + step_idx])
-        # for step_idx in range(self.diffusion_steps):
-        #     positions[1], noise_level[1] = self._apply_denoising_step(
-        #         batch, embeddings, positions[1], noise_level[1], mask, noise_levels[1 + step_idx])
-        # for step_idx in range(self.diffusion_steps):
-        #     positions[2], noise_level[2] = self._apply_denoising_step(
-        #         batch, embeddings, positions[2], noise_level[2], mask, noise_levels[1 + step_idx])
-        # for step_idx in range(self.diffusion_steps):
-        #     positions[3], noise_level[3] = self._apply_denoising_step(
-        #         batch, embeddings, positions[3], noise_level[3], mask, noise_levels[1 + step_idx])
-        # for step_idx in range(self.diffusion_steps):
-        #     positions[4], noise_level[4] = self._apply_denoising_step(
-        #         batch, embeddings, positions[4], noise_level[4], mask, noise_levels[1 + step_idx])
+
         print("sample diffusion time:",time.time()-time1)
+
         final_dense_atom_mask = torch.tile(mask[None], (num_samples, 1, 1))
 
         return {'atom_positions': positions, 'mask': final_dense_atom_mask}
@@ -391,7 +423,6 @@ class AlphaFold3(nn.Module):
         num_res = batch.num_res
 
         target_feat = self.create_target_feat_embedding(batch)
-        print("target_feat:",target_feat.shape)
         # target_feat1=self.create_target_feat_embedding(batch)
         embeddings = {
             'pair': torch.zeros(
@@ -403,7 +434,7 @@ class AlphaFold3(nn.Module):
             ),
             'target_feat': target_feat,  # type: ignore
         }
-
+        time1=time.time()
         for _ in range(self.num_recycles + 1):
             # ref:
             # Number of recycles is number of additional forward trunk passes.
@@ -415,16 +446,21 @@ class AlphaFold3(nn.Module):
                 prev=embeddings,
                 target_feat=target_feat
             )
-        # print("pair",embeddings['pair'])
-        print("dtype",embeddings['pair'].dtype,embeddings['single'].dtype)
-        embeddings['pair']=embeddings['pair'].to(dtype=torch.bfloat16).contiguous()
-        # dist.send(tensor=embeddings['pair'], dst=1)
-        # dist.send(tensor=embeddings['single'], dst=1)
+        print("evoformer cost time:",time.time()-time1)
+        c_pair=embeddings['pair'].contiguous()
+        c_single=embeddings['single'].contiguous()
+        # print("dtype",c_pair.dtype,c_single.dtype)
+        # print("shape",c_pair.shape,c_single.shape)
 
-        # dist.send(tensor=embeddings['target_feat'], dst=1)
-        # print("pair",embeddings['pair'])
+        for send_rank in range(1,min(self.world_size,self.num_samples)):
+            print("send",send_rank)
+            dist.send(tensor=c_pair, dst=send_rank)
+            dist.send(tensor=c_single, dst=send_rank)
+
+
+
         samples = self._sample_diffusion(batch, embeddings)
-
+        time2=time.time()
         confidence_output_per_sample = []
         for sample_dense_atom_position in samples['atom_positions']:
             confidence_output_per_sample.append(self.confidence_head(
@@ -434,14 +470,13 @@ class AlphaFold3(nn.Module):
                 token_atoms_to_pseudo_beta=batch.pseudo_beta_info.token_atoms_to_pseudo_beta,
                 asym_id=batch.token_features.asym_id
             ))
-
+        print("confidence_head cost time:",time.time()-time2)
         confidence_output = {}
         for key in confidence_output_per_sample[0]:
             confidence_output[key] = torch.stack(
                 [sample[key] for sample in confidence_output_per_sample], dim=0)
 
         distogram = self.distogram_head(batch, embeddings)
-
         return {
             'diffusion_samples': samples,
             'distogram': distogram,
