@@ -253,7 +253,7 @@ class GridSelfAttention(nn.Module):
             pair.view(-1),  # 展平为 1D
             mask.view(-1),
         ]).contiguous()
-
+        print("start to send",combined_tensor.shape,combined_tensor.dtype)
         dist.isend(combined_tensor, dst=1)
         self.chunk_weight()
 

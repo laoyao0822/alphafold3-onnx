@@ -120,7 +120,7 @@ class GridSelfAttention(nn.Module):
                 self.isFirst = False
 
     def _attention(self,num_res):
-        print("attention device:",self.q_projection.weight.device)
+        # print("attention device:",self.q_projection.weight.device)
         seq_len=num_res
 
         pair_size = seq_len * seq_len * self.c_pair
@@ -128,8 +128,8 @@ class GridSelfAttention(nn.Module):
 
 
         total_size = pair_size + mask_size
-
-        combined_buffer = torch.zeros(total_size, dtype=torch.bfloat16).cuda().contiguous()
+        combined_buffer = torch.zeros(total_size, dtype=torch.bfloat16,device=self.q_projection.weight.device).contiguous()
+        print("start to receive",combined_buffer.shape)
         # print("start to receive",combined_buffer.shape)
         dist.recv(tensor=combined_buffer, src=0)
 
@@ -145,11 +145,10 @@ class GridSelfAttention(nn.Module):
              t, 'b n (h d) -> b h n d', h=self.num_head//2), [q2,k2,v2])
 
         bias2 = self.pair_bias_projection2(pair).permute(2, 0, 1)
-        weighted_avg2=dot_product_attention_triton(q2, k2, v2,
+        weighted_avg2=dot_product_attention(q2, k2, v2,
                                                     mask=mask,
                                                     bias=bias2)
         weighted_avg2 = einops.rearrange(weighted_avg2, 'b h n d -> b n (h d)', h=self.num_head//2)
-
 
         gate_values2 = self.gating_query2(pair)
 
@@ -161,15 +160,7 @@ class GridSelfAttention(nn.Module):
 
     def forward(self,num_res):
         if self.rank==1 and num_res>500 and config._GridAttention_TP :
-            print(""   )
             self.chunk_weight()
             self._attention(num_res)
-        # print("start forward")
 
-
-        # print("success receive",pair.shape,mask.shape,bias.shape)
-        # print("out_proj mask")
-
-        # print("send done")
-        # print("one attention")
 
