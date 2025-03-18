@@ -10,3 +10,4 @@ torchfold3/config.py
 **ncu-rep**
 *.egg
 ./alphafold3
+./torchfold_nodist
