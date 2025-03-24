@@ -213,7 +213,8 @@ class Evoformer(nn.Module):
             self.prev_embedding_layer_norm(prev['pair']))
 
         pair_activations = self._relative_encoding(batch, pair_activations)
-
+        # t_c=target_feat.clone()
+        # single_c=prev['single'].clone()
         pair_activations = self._embed_bonds(
             batch=batch, pair_activations=pair_activations
         )
@@ -230,7 +231,14 @@ class Evoformer(nn.Module):
             pair_mask=pair_mask,
             target_feat=target_feat,
         )
-
+        # if torch.allclose(t_c, target_feat, rtol=1e-6):
+        #     print("target_feat 张量没有变化")
+        # else:
+        #     print("target_feat 张量发生了变化")
+        # if torch.allclose(prev['single'], single_c, rtol=1e-6):
+        #     print("single 张量没有变化")
+        # else:
+        #     print("single 张量发生了变化")
         single_activations = self.single_activations(target_feat)
         single_activations += self.prev_single_embedding(
             self.prev_single_embedding_layer_norm(prev['single']))
@@ -249,26 +257,19 @@ class Evoformer(nn.Module):
 
 
 class AlphaFold3(nn.Module):
-# ref:
-# def make_model_config(
-#     *,
-#     flash_attention_implementation: attention.Implementation = 'triton',
-#     num_diffusion_samples: int = 5,
-#     num_recycles: int = 10,
-#     return_embeddings: bool = False,
-# )
-    # eval: SampleConfig = base_config.autocreate(
-    #     num_samples=5,
-    #     steps=200,
-    # )
+
     def __init__(self, num_recycles: int = 10, num_samples: int = 5, diffusion_steps: int = 200):
         super(AlphaFold3, self).__init__()
 
         self.num_recycles = num_recycles
         self.num_samples = num_samples
         self.diffusion_steps = diffusion_steps
-        self.world_size = dist.get_world_size()
-        self.rank = dist.get_rank()
+        if dist.is_initialized():
+            self.world_size = dist.get_world_size()
+            self.rank = dist.get_rank()
+        else:
+            self.world_size = 1
+            self.rank = 0
 
         self.gamma_0 = 0.8
         self.gamma_min = 1.0
@@ -357,20 +358,35 @@ class AlphaFold3(nn.Module):
 
         positions = torch.randn(
             (num_samples,) + mask.shape + (3,), device=device,dtype=torch.float32)
-        positions *= noise_levels[0]
-
+        # positions *= noise_levels[0]
+        #noise_level torch.Size([5]) noise_levels torch.Size([201])
         noise_level = torch.tile(noise_levels[None, 0], (num_samples,))
+        #noise_level [2560., 2560., 2560., 2560., 2560.]
+        # print("noise_level", noise_level)
         time1=time.time()
         # print("start sample diffusion",self.num_samples,"-",positions.shape)
-
-
+        # print("noise_level", noise_level.shape,"noise_levels",noise_levels.shape)
+        mask_c=mask.clone()
         if self.world_size==1:
+            # for sample_idx in range(self.num_samples):
+            #     print("sample_idx", sample_idx)
+            #     for step_idx in range(self.diffusion_steps):
+            #         positions[sample_idx], noise_level[sample_idx] = self._apply_denoising_step(
+            #             batch, embeddings, positions[sample_idx], noise_level[sample_idx], mask,
+            #             noise_levels[1 + step_idx])
             for sample_idx in range(self.num_samples):
                 print("sample_idx", sample_idx)
+                # print("noise_level",noise_levels[None, 0])
+                noise_level = noise_levels[0]
+                position_c=torch.randn(mask.shape + (3,), device=device,dtype=torch.float32)
+                position_c*=noise_level
                 for step_idx in range(self.diffusion_steps):
-                    positions[sample_idx], noise_level[sample_idx] = self._apply_denoising_step(
-                        batch, embeddings, positions[sample_idx], noise_level[sample_idx], mask,
+                    position_c, noise_level= self._apply_denoising_step(
+                        batch, embeddings, position_c, noise_level, mask,
                         noise_levels[1 + step_idx])
+                positions[sample_idx]=position_c
+
+
         elif self.world_size==2:
             rec_1 = dist.irecv(tensor=positions[3], src=1)
             rec_2 = dist.irecv(tensor=positions[4], src=1)
@@ -411,18 +427,31 @@ class AlphaFold3(nn.Module):
             for rec in recs:
                 rec.wait()
 
-
         print("sample diffusion time:",time.time()-time1)
+
+        # if torch.allclose(mask_c, mask, rtol=1e-5):
+        #     print("target_feat 张量没有变化")
+        # else:
+        #     print("target_feat 张量发生了变化")
+
+        #single 张量没有变化
+        #pair 张量没有变化
+        #target_feat 张量没有变化
+        #mask 张量没有变化
 
         final_dense_atom_mask = torch.tile(mask[None], (num_samples, 1, 1))
 
         return {'atom_positions': positions, 'mask': final_dense_atom_mask}
 
-    def forward(self, batch: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
+    def forward(self, batch: dict[str, torch.Tensor]) :
         batch = feat_batch.Batch.from_data_dict(batch)
         num_res = batch.num_res
-
+        #target_feat torch.Size([37, 447])
+        time1 = time.time()
         target_feat = self.create_target_feat_embedding(batch)
+        print("create target feat cost time:", time.time() - time1)
+        # return target_feat
+        # print("target_feat", target_feat.shape)
         # target_feat1=self.create_target_feat_embedding(batch)
         embeddings = {
             'pair': torch.zeros(
@@ -434,7 +463,7 @@ class AlphaFold3(nn.Module):
             ),
             'target_feat': target_feat,  # type: ignore
         }
-        time1=time.time()
+        time1 = time.time()
         for _ in range(self.num_recycles + 1):
             # ref:
             # Number of recycles is number of additional forward trunk passes.
@@ -477,6 +506,12 @@ class AlphaFold3(nn.Module):
                 [sample[key] for sample in confidence_output_per_sample], dim=0)
 
         distogram = self.distogram_head(batch, embeddings)
+
+        # if torch.allclose(target_feat_clone, embeddings['target_feat'], rtol=1e-5):
+        #     print("target_feat 张量没有变化")
+        # else:
+        #     print("target_feat 张量发生了变化")
+
         return {
             'diffusion_samples': samples,
             'distogram': distogram,

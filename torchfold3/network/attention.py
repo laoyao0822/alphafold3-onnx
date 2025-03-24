@@ -166,10 +166,13 @@ class GridSelfAttention(nn.Module):
         self.qkv_dim = self.c_pair // self.num_head
         self.transpose = transpose
         self.block_shape=None
-
-        self.world_size=dist.get_world_size()
-        if self.world_size>2:
-            self.world_size=2
+        if  dist.is_initialized():
+            self.world_size=dist.get_world_size()
+            if self.world_size>2:
+                self.world_size=2
+        else:
+            self.world_size=1
+            self.rank=0
 
         self.act_norm = LayerNorm(self.c_pair)
         self.pair_bias_projection = nn.Linear(

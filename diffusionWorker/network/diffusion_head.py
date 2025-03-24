@@ -223,7 +223,6 @@ class DiffusionHead(nn.Module):
         act = act / torch.sqrt(noise_level**2 + SIGMA_DATA**2)
 
         enc = self.atom_cross_att_encoder(
-
             ref_ops=ref_ops, ref_mask=ref_mask, ref_element=ref_element, ref_charge=ref_charge,
             ref_atom_name_chars=ref_atom_name_chars, ref_space_uid=ref_space_uid,
             pred_dense_atom_mask=pred_dense_atom_mask,
@@ -242,7 +241,6 @@ class DiffusionHead(nn.Module):
             acat_t_to_k_gather_idxs=acat_t_to_k_gather_idxs,
             acat_t_to_k_gather_mask=acat_t_to_k_gather_mask,
             acat_t_to_k_input_shape=acat_t_to_k_input_shape,
-
             token_atoms_act=act,
             trunk_single_cond=embeddings['single'],
             trunk_pair_cond=trunk_pair_cond,
@@ -252,7 +250,6 @@ class DiffusionHead(nn.Module):
         act += self.single_cond_embedding_projection(
             self.single_cond_embedding_norm(trunk_single_cond)
         )
-
         act = self.transformer(
             act=act,
             single_cond=trunk_single_cond,
