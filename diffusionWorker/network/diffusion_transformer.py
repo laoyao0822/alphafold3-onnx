@@ -343,7 +343,6 @@ class DiffusionCrossAttTransformer(nn.Module):
         # queries_to_keys: atom_layout.GatherInfo,  # (num_subsets, num_keys)
         acat_q_to_k_gather_idxs,
         acat_q_to_k_gather_mask,
-        acat_q_to_k_input_shape,
         keys_mask: torch.Tensor,  # (num_subsets, num_keys)
         queries_single_cond: torch.Tensor,  # (num_subsets, num_queries, ch)
         keys_single_cond: torch.Tensor,  # (num_subsets, num_keys, ch)
@@ -361,7 +360,6 @@ class DiffusionCrossAttTransformer(nn.Module):
                 # queries_to_keys,
                 acat_q_to_k_gather_idxs,
                 acat_q_to_k_gather_mask,
-                acat_q_to_k_input_shape,
                 queries_act, layout_axes=(-3, -2)
             )
 

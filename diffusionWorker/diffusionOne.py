@@ -49,19 +49,14 @@ class DiffusionOne(nn.Module):
         ref_ops, ref_mask, ref_element, ref_charge, ref_atom_name_chars, ref_space_uid,
         acat_atoms_to_q_gather_idxs,
         acat_atoms_to_q_gather_mask,
-        acat_atoms_to_q_input_shape,
         acat_q_to_k_gather_idxs,
         acat_q_to_k_gather_mask,
-        acat_q_to_k_input_shape,
         acat_t_to_q_gather_idxs,
         acat_t_to_q_gather_mask,
-        acat_t_to_q_input_shape,
         acat_q_to_atom_gather_idxs,
         acat_q_to_atom_gather_mask,
-        acat_q_to_atom_input_shape,
         acat_t_to_k_gather_idxs,
         acat_t_to_k_gather_mask,
-        acat_t_to_k_input_shape,
         # batch: feat_batch.Batch,
         embeddings: dict[str, torch.Tensor],
         positions: torch.Tensor,
@@ -91,19 +86,14 @@ class DiffusionOne(nn.Module):
             ref_atom_name_chars=ref_atom_name_chars, ref_space_uid=ref_space_uid,
             acat_atoms_to_q_gather_idxs=acat_atoms_to_q_gather_idxs,
             acat_atoms_to_q_gather_mask=acat_atoms_to_q_gather_mask,
-            acat_atoms_to_q_input_shape=acat_atoms_to_q_input_shape,
             acat_q_to_k_gather_idxs=acat_q_to_k_gather_idxs,
             acat_q_to_k_gather_mask=acat_q_to_k_gather_mask,
-            acat_q_to_k_input_shape=acat_q_to_k_input_shape,
             acat_t_to_q_gather_idxs=acat_t_to_q_gather_idxs,
             acat_t_to_q_gather_mask=acat_t_to_q_gather_mask,
-            acat_t_to_q_input_shape=acat_t_to_q_input_shape,
             acat_q_to_atom_gather_idxs=acat_q_to_atom_gather_idxs,
             acat_q_to_atom_gather_mask=acat_q_to_atom_gather_mask,
-            acat_q_to_atom_input_shape=acat_q_to_atom_input_shape,
             acat_t_to_k_gather_idxs=acat_t_to_k_gather_idxs,
             acat_t_to_k_gather_mask=acat_t_to_k_gather_mask,
-            acat_t_to_k_input_shape=acat_t_to_k_input_shape,
             positions_noisy=positions_noisy,
             noise_level=t_hat,
             # batch=batch,
@@ -124,19 +114,14 @@ class DiffusionOne(nn.Module):
         ref_ops, ref_mask, ref_element, ref_charge, ref_atom_name_chars, ref_space_uid,
         acat_atoms_to_q_gather_idxs,
         acat_atoms_to_q_gather_mask,
-        acat_atoms_to_q_input_shape,
         acat_q_to_k_gather_idxs,
         acat_q_to_k_gather_mask,
-        acat_q_to_k_input_shape,
         acat_t_to_q_gather_idxs,
         acat_t_to_q_gather_mask,
-        acat_t_to_q_input_shape,
         acat_q_to_atom_gather_idxs,
         acat_q_to_atom_gather_mask,
-        acat_q_to_atom_input_shape,
         acat_t_to_k_gather_idxs,
         acat_t_to_k_gather_mask,
-        acat_t_to_k_input_shape,
         # batch: feat_batch.Batch,
         embeddings: dict[str, torch.Tensor],
     ) -> Tensor:
@@ -150,15 +135,19 @@ class DiffusionOne(nn.Module):
         noise_levels = diffusion_head.noise_schedule(
             torch.linspace(0, 1, self.diffusion_steps + 1, device=device))
 
+
+
+        noise_level = noise_levels[0]
+
         # positions = torch.randn(
         #     (num_samples,) + pred_dense_atom_mask.shape + (3,), device=device)
         positions = torch.randn(pred_dense_atom_mask.shape + (3,), device=device)
-        positions *= noise_levels[0]
+        positions *= noise_level
 
         # noise_level = torch.tile(noise_levels[None, 0], (num_samples,))
 
         for step_idx in range(self.diffusion_steps):
-            noise_level = noise_levels[0]
+
             positions, noise_level = self._apply_denoising_step(
                 token_index=token_index, residue_index=residue_index, asym_id=asym_id,
                 entity_id=entity_id, sym_id=sym_id,
@@ -167,19 +156,14 @@ class DiffusionOne(nn.Module):
                 ref_atom_name_chars=ref_atom_name_chars, ref_space_uid=ref_space_uid,
                 acat_atoms_to_q_gather_idxs=acat_atoms_to_q_gather_idxs,
                 acat_atoms_to_q_gather_mask=acat_atoms_to_q_gather_mask,
-                acat_atoms_to_q_input_shape=acat_atoms_to_q_input_shape,
                 acat_q_to_k_gather_idxs=acat_q_to_k_gather_idxs,
                 acat_q_to_k_gather_mask=acat_q_to_k_gather_mask,
-                acat_q_to_k_input_shape=acat_q_to_k_input_shape,
                 acat_t_to_q_gather_idxs=acat_t_to_q_gather_idxs,
                 acat_t_to_q_gather_mask=acat_t_to_q_gather_mask,
-                acat_t_to_q_input_shape=acat_t_to_q_input_shape,
                 acat_q_to_atom_gather_idxs=acat_q_to_atom_gather_idxs,
                 acat_q_to_atom_gather_mask=acat_q_to_atom_gather_mask,
-                acat_q_to_atom_input_shape=acat_q_to_atom_input_shape,
                 acat_t_to_k_gather_idxs=acat_t_to_k_gather_idxs,
                 acat_t_to_k_gather_mask=acat_t_to_k_gather_mask,
-                acat_t_to_k_input_shape=acat_t_to_k_input_shape,
                 embeddings=embeddings, positions=positions,
                 noise_level_prev=noise_level, mask=pred_dense_atom_mask,
                 noise_level=noise_levels[1 + step_idx])
@@ -190,25 +174,20 @@ class DiffusionOne(nn.Module):
                 seq_mask, token_index, residue_index, asym_id, entity_id, sym_id,
                 pred_dense_atom_mask,
 
-                acat_atoms_to_q_input_shape,
                 acat_atoms_to_q_gather_idxs,
                 acat_atoms_to_q_gather_mask,
 
                 acat_q_to_k_gather_idxs,
                 acat_q_to_k_gather_mask,
-                acat_q_to_k_input_shape,
 
                 acat_t_to_q_gather_idxs,
                 acat_t_to_q_gather_mask,
-                acat_t_to_q_input_shape,
 
                 acat_q_to_atom_gather_idxs,
                 acat_q_to_atom_gather_mask,
-                acat_q_to_atom_input_shape,
 
                 acat_t_to_k_gather_idxs,
                 acat_t_to_k_gather_mask,
-                acat_t_to_k_input_shape,
 
                 ref_ops, ref_mask, ref_element, ref_charge, ref_atom_name_chars, ref_space_uid,
                 ) :
@@ -226,19 +205,14 @@ class DiffusionOne(nn.Module):
                     ref_atom_name_chars=ref_atom_name_chars, ref_space_uid=ref_space_uid,
                     acat_atoms_to_q_gather_idxs=acat_atoms_to_q_gather_idxs,
                     acat_atoms_to_q_gather_mask=acat_atoms_to_q_gather_mask,
-                    acat_atoms_to_q_input_shape=acat_atoms_to_q_input_shape,
                     acat_q_to_k_gather_idxs=acat_q_to_k_gather_idxs,
                     acat_q_to_k_gather_mask=acat_q_to_k_gather_mask,
-                    acat_q_to_k_input_shape=acat_q_to_k_input_shape,
                     acat_t_to_q_gather_idxs=acat_t_to_q_gather_idxs,
                     acat_t_to_q_gather_mask=acat_t_to_q_gather_mask,
-                    acat_t_to_q_input_shape=acat_t_to_q_input_shape,
                     acat_q_to_atom_gather_idxs=acat_q_to_atom_gather_idxs,
                     acat_q_to_atom_gather_mask=acat_q_to_atom_gather_mask,
-                    acat_q_to_atom_input_shape=acat_q_to_atom_input_shape,
                     acat_t_to_k_gather_idxs=acat_t_to_k_gather_idxs,
                     acat_t_to_k_gather_mask=acat_t_to_k_gather_mask,
-                    acat_t_to_k_input_shape=acat_t_to_k_input_shape,
                     embeddings=embeddings)
 
         return  atom_positions
