@@ -204,7 +204,7 @@ class Evoformer(nn.Module):
         prev: dict[str, torch.Tensor],
         target_feat: torch.Tensor
     ) -> dict[str, torch.Tensor]:
-
+        time1=time.time()
         pair_activations, pair_mask = self._seq_pair_embedding(
             batch.token_features, target_feat
         )
@@ -218,6 +218,17 @@ class Evoformer(nn.Module):
         pair_activations = self._embed_bonds(
             batch=batch, pair_activations=pair_activations
         )
+
+
+
+
+
+        single_activations = self.single_activations(target_feat)
+        single_activations += self.prev_single_embedding(
+            self.prev_single_embedding_layer_norm(prev['single']))
+
+        print("evoformer1 cost time:", time.time() - time1)
+        # exit(0)
 
         pair_activations = self._embed_template_pair(
             batch=batch,
@@ -239,14 +250,11 @@ class Evoformer(nn.Module):
         #     print("single 张量没有变化")
         # else:
         #     print("single 张量发生了变化")
-        single_activations = self.single_activations(target_feat)
-        single_activations += self.prev_single_embedding(
-            self.prev_single_embedding_layer_norm(prev['single']))
+
 
         for pairformer_b in self.trunk_pairformer:
             pair_activations, single_activations = pairformer_b(
                 pair_activations, pair_mask, single_activations, batch.token_features.mask)
-
         output = {
             'single': single_activations,
             'pair': pair_activations,
@@ -366,7 +374,7 @@ class AlphaFold3(nn.Module):
         time1=time.time()
         # print("start sample diffusion",self.num_samples,"-",positions.shape)
         # print("noise_level", noise_level.shape,"noise_levels",noise_levels.shape)
-        mask_c=mask.clone()
+
         if self.world_size==1:
             # for sample_idx in range(self.num_samples):
             #     print("sample_idx", sample_idx)
@@ -378,7 +386,9 @@ class AlphaFold3(nn.Module):
                 print("sample_idx", sample_idx)
                 # print("noise_level",noise_levels[None, 0])
                 noise_level = noise_levels[0]
+                print("noise_level", noise_level)
                 position_c=torch.randn(mask.shape + (3,), device=device,dtype=torch.float32)
+
                 position_c*=noise_level
                 for step_idx in range(self.diffusion_steps):
                     position_c, noise_level= self._apply_denoising_step(
@@ -396,6 +406,7 @@ class AlphaFold3(nn.Module):
                     positions[sample_idx], noise_level[sample_idx] = self._apply_denoising_step(
                         batch, embeddings, positions[sample_idx], noise_level[sample_idx], mask,
                         noise_levels[1 + step_idx])
+
             # print("positions", positions.shape, positions.dtype)
             rec_1.wait()
             rec_2.wait()
@@ -443,52 +454,55 @@ class AlphaFold3(nn.Module):
 
         return {'atom_positions': positions, 'mask': final_dense_atom_mask}
 
-    def forward(self, batch: dict[str, torch.Tensor]) :
+    def forward(self, batch: dict[str, torch.Tensor]
+                ,embeddings,positions
+                ) :
         batch = feat_batch.Batch.from_data_dict(batch)
-        num_res = batch.num_res
-        #target_feat torch.Size([37, 447])
-        time1 = time.time()
-        target_feat = self.create_target_feat_embedding(batch)
-        print("create target feat cost time:", time.time() - time1)
-        # return target_feat
+        # num_res = batch.num_res
+        # #target_feat torch.Size([37, 447])
+        # time1 = time.time()
+        # target_feat = self.create_target_feat_embedding(batch)
+        # print("create target feat cost time:", time.time() - time1)
+        # # return target_feat
         # print("target_feat", target_feat.shape)
         # target_feat1=self.create_target_feat_embedding(batch)
-        embeddings = {
-            'pair': torch.zeros(
-                [num_res, num_res, self.evoformer_pair_channel], device=target_feat.device,
-                dtype=torch.float32,
-            ),
-            'single': torch.zeros(
-                [num_res, self.evoformer_seq_channel], dtype=torch.float32, device=target_feat.device,
-            ),
-            'target_feat': target_feat,  # type: ignore
-        }
-        time1 = time.time()
-        for _ in range(self.num_recycles + 1):
-            # ref:
-            # Number of recycles is number of additional forward trunk passes.
-            # num_iter = self.config.num_recycles + 1
-            # embeddings, _ = hk.fori_loop(0, num_iter, recycle_body, (embeddings, key))
-            
-            embeddings = self.evoformer(
-                batch=batch,
-                prev=embeddings,
-                target_feat=target_feat
-            )
-        print("evoformer cost time:",time.time()-time1)
-        c_pair=embeddings['pair'].contiguous()
-        c_single=embeddings['single'].contiguous()
-        # print("dtype",c_pair.dtype,c_single.dtype)
-        # print("shape",c_pair.shape,c_single.shape)
+        # embeddings = {
+        #     'pair': torch.zeros(
+        #         [num_res, num_res, self.evoformer_pair_channel], device=target_feat.device,
+        #         dtype=torch.float32,
+        #     ),
+        #     'single': torch.zeros(
+        #         [num_res, self.evoformer_seq_channel], dtype=torch.float32, device=target_feat.device,
+        #     ),
+        #     'target_feat': target_feat,  # type: ignore
+        # }
+        # time1 = time.time()
+        # for _ in range(self.num_recycles + 1):
+        #     # ref:
+        #     # Number of recycles is number of additional forward trunk passes.
+        #     # num_iter = self.config.num_recycles + 1
+        #     # embeddings, _ = hk.fori_loop(0, num_iter, recycle_body, (embeddings, key))
+        #
+        #     embeddings = self.evoformer(
+        #         batch=batch,
+        #         prev=embeddings,
+        #         target_feat=target_feat
+        #     )
+        # # print("evoformer cost time:",time.time()-time1)
+        # c_pair=embeddings['pair'].contiguous()
+        # c_single=embeddings['single'].contiguous()
+        # # print("dtype",c_pair.dtype,c_single.dtype)
+        # # print("shape",c_pair.shape,c_single.shape)
+        #
+        # for send_rank in range(1,min(self.world_size,self.num_samples)):
+        #     print("send",send_rank)
+        #     dist.send(tensor=c_pair, dst=send_rank)
+        #     dist.send(tensor=c_single, dst=send_rank)
 
-        for send_rank in range(1,min(self.world_size,self.num_samples)):
-            print("send",send_rank)
-            dist.send(tensor=c_pair, dst=send_rank)
-            dist.send(tensor=c_single, dst=send_rank)
-
-
-
-        samples = self._sample_diffusion(batch, embeddings)
+        sample_mask = batch.predicted_structure_info.atom_mask
+        # samples = self._sample_diffusion(batch, embeddings)
+        final_dense_atom_mask = torch.tile(sample_mask[None], (self.num_samples, 1, 1))
+        samples={'atom_positions': positions, 'mask': final_dense_atom_mask}
         time2=time.time()
         confidence_output_per_sample = []
         for sample_dense_atom_position in samples['atom_positions']:
@@ -506,6 +520,7 @@ class AlphaFold3(nn.Module):
                 [sample[key] for sample in confidence_output_per_sample], dim=0)
 
         distogram = self.distogram_head(batch, embeddings)
+
 
         # if torch.allclose(target_feat_clone, embeddings['target_feat'], rtol=1e-5):
         #     print("target_feat 张量没有变化")

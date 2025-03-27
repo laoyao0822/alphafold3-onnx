@@ -38,9 +38,11 @@ class DiffusionOne(nn.Module):
         self.evoformer_pair_channel = 128
         self.evoformer_seq_channel = 384
 
-        self.evoformer_conditioning = atom_cross_attention.AtomCrossAttEncoder()
-
-        self.diffusion_head = diffusion_head.DiffusionHead()
+        # self.diffusion_head = diffusion_head.DiffusionHead()
+        self.diffusion_head = torch.compile(diffusion_head.DiffusionHead(), dynamic=True,backend="openvino",
+                                            options={"device": "CPU","model_caching" : True, "cache_dir": "./model_cache"})
+    # opts = {"device": "CPU", "config": {"PERFORMANCE_HINT": "LATENCY"}, "model_caching": True,
+    #         "cache_dir": "./model_cache"}
 
     def _apply_denoising_step(
         self,
@@ -77,7 +79,6 @@ class DiffusionOne(nn.Module):
         # noise = noise_scale *torch.randn(size=positions.shape, device=noise_scale.device)
         noise = noise_scale
         positions_noisy = positions + noise
-
         positions_denoised = self.diffusion_head(
             token_index=token_index, residue_index=residue_index, asym_id=asym_id,
             entity_id=entity_id, sym_id=sym_id,
@@ -135,19 +136,20 @@ class DiffusionOne(nn.Module):
         noise_levels = diffusion_head.noise_schedule(
             torch.linspace(0, 1, self.diffusion_steps + 1, device=device))
 
-
-
         noise_level = noise_levels[0]
 
         # positions = torch.randn(
         #     (num_samples,) + pred_dense_atom_mask.shape + (3,), device=device)
+        # original_state = torch.random.get_rng_state()
+        # torch.manual_seed(int(time.time()))
         positions = torch.randn(pred_dense_atom_mask.shape + (3,), device=device)
+        # torch.random.set_rng_state(original_state)
         positions *= noise_level
 
         # noise_level = torch.tile(noise_levels[None, 0], (num_samples,))
-
+        print("noise levels[0]",noise_levels[1].shape,noise_levels[1].dtype)
+        print("noise level:",noise_level.shape,noise_level.dtype)
         for step_idx in range(self.diffusion_steps):
-
             positions, noise_level = self._apply_denoising_step(
                 token_index=token_index, residue_index=residue_index, asym_id=asym_id,
                 entity_id=entity_id, sym_id=sym_id,

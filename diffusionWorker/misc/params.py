@@ -571,7 +571,6 @@ def DiffusionHeadParams(head):
     }
 def get_translation_dict(model):
     translations = {
-        **cat_params(AtomCrossAttEncoderParams(model.evoformer_conditioning), "evoformer_conditioning_"),
         "~/diffusion_head": DiffusionHeadParams(model.diffusion_head),
     }
 
