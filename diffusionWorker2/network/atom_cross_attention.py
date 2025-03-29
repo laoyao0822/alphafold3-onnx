@@ -137,35 +137,10 @@ class AtomCrossAttEncoder(nn.Module):
             self.embed_trunk_pair_cond = nn.Linear(
                 self.c_trunk_pair_cond, self.per_atom_pair_channels, bias=False)
 
-    def _per_atom_conditioning(self, batch: feat_batch.Batch) -> tuple[torch.Tensor, torch.Tensor]:
-        
-# ref:
-#   c = config
-#   # Compute per-atom single conditioning
-#   # Shape (num_tokens, num_dense, channels)
-#   act = hm.Linear(
-#       c.per_atom_channels, precision='highest', name=f'{name}_embed_ref_pos'
-#   )(batch.ref_structure.positions)
-#   act += hm.Linear(c.per_atom_channels, name=f'{name}_embed_ref_mask')(
-#       batch.ref_structure.mask.astype(jnp.float32)[:, :, None]
-#   )
-#   # Element is encoded as atomic number if the periodic table, so
-#   # 128 should be fine.
-#   act += hm.Linear(c.per_atom_channels, name=f'{name}_embed_ref_element')(
-#       jax.nn.one_hot(batch.ref_structure.element, 128)
-#   )
-#   act += hm.Linear(c.per_atom_channels, name=f'{name}_embed_ref_charge')(
-#       jnp.arcsinh(batch.ref_structure.charge)[:, :, None]
-#   )
-#   # Characters are encoded as ASCII code minus 32, so we need 64 classes,
-#   # to encode all standard ASCII characters between 32 and 96.
-#   atom_name_chars_1hot = jax.nn.one_hot(batch.ref_structure.atom_name_chars, 64)
-#   num_token, num_dense, _ = act.shape
-#   act += hm.Linear(c.per_atom_channels, name=f'{name}_embed_ref_atom_name')(
-#       atom_name_chars_1hot.reshape(num_token, num_dense, -1)
-#   )
-#   act *= batch.ref_structure.mask.astype(jnp.float32)[:, :, None]
-        
+    def _per_atom_conditioning(self, batch: feat_batch.Batch,
+                               # ref_ops, ref_mask, ref_element,
+                               # ref_charge, ref_atom_name_chars
+                               ) -> tuple[torch.Tensor, torch.Tensor]:
 
         # Compute per-atom single conditioning
         # Shape (num_tokens, num_dense, channels)

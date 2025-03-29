@@ -125,17 +125,18 @@ def create_target_feat(
 
 
 def create_relative_encoding(
-    seq_features: features.TokenFeatures,
+    # seq_features: features.TokenFeatures,
+    token_index,residue_index,asym_id,entity_id,sym_id,
     max_relative_idx: int,
     max_relative_chain: int
 ) -> torch.Tensor:
     """Add relative position encodings."""
     rel_feats = []
-    token_index = seq_features.token_index
-    residue_index = seq_features.residue_index
-    asym_id = seq_features.asym_id
-    entity_id = seq_features.entity_id
-    sym_id = seq_features.sym_id
+    # token_index = seq_features.token_index
+    # residue_index = seq_features.residue_index
+    # asym_id = seq_features.asym_id
+    # entity_id = seq_features.entity_id
+    # sym_id = seq_features.sym_id
 
     left_asym_id = asym_id[:, None]
     right_asym_id = asym_id[None, :]

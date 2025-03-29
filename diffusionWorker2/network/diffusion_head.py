@@ -141,18 +141,27 @@ class DiffusionHead(nn.Module):
 
     def _conditioning(
         self,
-        batch,
-        embeddings: dict[str, torch.Tensor],
+        token_index, residue_index, asym_id, entity_id, sym_id,
+        # embeddings: dict[str, torch.Tensor],
+        single, pair, target_feat,
         noise_level: torch.Tensor,
-        use_conditioning: bool,
+        # use_conditioning: bool,//always true
     ) -> tuple[torch.Tensor, torch.Tensor]:
-        single_embedding = use_conditioning * embeddings['single']
-        pair_embedding = use_conditioning * embeddings['pair']
+        # single_embedding =  embeddings['single']
+        # pair_embedding =  embeddings['pair']
 
+        # rel_features = featurization.create_relative_encoding(
+        #         #     batch.token_features, max_relative_idx=32, max_relative_chain=2
+        #         # ).to(dtype=pair.dtype)
         rel_features = featurization.create_relative_encoding(
-            batch.token_features, max_relative_idx=32, max_relative_chain=2
-        ).to(dtype=pair_embedding.dtype)
-        features_2d = torch.concatenate([pair_embedding, rel_features], dim=-1)
+            token_index=token_index,
+            residue_index=residue_index,
+            asym_id=asym_id,
+            entity_id=entity_id,
+            sym_id=sym_id
+        , max_relative_idx=32, max_relative_chain=2
+        ).to(dtype=pair.dtype)
+        features_2d = torch.concatenate([pair, rel_features], dim=-1)
 
         pair_cond = self.pair_cond_initial_projection(
             self.pair_cond_initial_norm(features_2d)
@@ -161,9 +170,9 @@ class DiffusionHead(nn.Module):
         pair_cond += self.pair_transition_0(pair_cond)
         pair_cond += self.pair_transition_1(pair_cond)
 
-        target_feat = embeddings['target_feat']
+        # target_feat = embeddings['target_feat']
         features_1d = torch.concatenate(
-            [single_embedding, target_feat], dim=-1)
+            [single, target_feat], dim=-1)
         single_cond = self.single_cond_initial_projection(
             self.single_cond_initial_norm(features_1d))
 
@@ -186,23 +195,29 @@ class DiffusionHead(nn.Module):
         noise_level: torch.Tensor,
         batch: feat_batch.Batch,
         embeddings: dict[str, torch.Tensor],
-        use_conditioning: bool
+        # use_conditioning: bool
     ) -> torch.Tensor:
         # Get conditioning
         trunk_single_cond, trunk_pair_cond = self._conditioning(
-            batch=batch,
-            embeddings=embeddings,
+            # batch=batch,
+            token_index=batch.token_features.token_index,
+            residue_index=batch.token_features.residue_index,
+            asym_id=batch.token_features.asym_id,
+            entity_id=batch.token_features.entity_id,
+            sym_id=batch.token_features.sym_id,
+            # embeddings=embeddings,
+            single=embeddings['single'], pair=embeddings['pair'], target_feat=embeddings['target_feat'],
             noise_level=noise_level,
-            use_conditioning=use_conditioning,
+            # use_conditioning=use_conditioning,
         )
 
         # Extract features
-        sequence_mask = batch.token_features.mask
+        seq_mask = batch.token_features.mask
         atom_mask = batch.predicted_structure_info.atom_mask
 
         # Position features
-        act = positions_noisy * atom_mask[..., None]
-        act = act / torch.sqrt(noise_level**2 + SIGMA_DATA**2)
+        # act = positions_noisy * atom_mask[..., None]
+        act = positions_noisy * atom_mask[..., None] / torch.sqrt(noise_level**2 + SIGMA_DATA**2)
 
         enc = self.atom_cross_att_encoder(
             batch=batch,
@@ -219,7 +234,7 @@ class DiffusionHead(nn.Module):
         act = self.transformer(
             act=act,
             single_cond=trunk_single_cond,
-            mask=sequence_mask,
+            mask=seq_mask,
             pair_cond=trunk_pair_cond,
         )
         act = self.output_norm(act)
