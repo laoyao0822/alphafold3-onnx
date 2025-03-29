@@ -219,7 +219,8 @@ class ModelRunner:
                 import intel_extension_for_pytorch as ipex
                 print("Applying Intel Extension for PyTorch optimizations...")
                 self._model = ipex.optimize(self._model,weights_prepack=False,optimize_lstm=True,auto_kernel_selection=True,dtype=torch.bfloat16)
-
+                self._model.diffusion_head=torch.compile(self._model.diffusion_head,backend="openvino",dynamic=True)
+                # self._model.evoformer=torch.compile(self._model.evoformer,backend="openvino",dynamic=True)
             if _CPU_FLUSH_DENORM_OPT:
                 torch.set_flush_denormal(True)
                 

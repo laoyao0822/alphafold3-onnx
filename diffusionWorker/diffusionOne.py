@@ -18,6 +18,54 @@ from torch import Tensor
 from diffusionWorker.network import featurization
 from diffusionWorker.network import atom_cross_attention
 from diffusionWorker.network import diffusion_head
+from diffusionWorker.misc import params
+
+def getOnnxOfDiffusionHead(batch,model_path,len):
+    pred_dense_atom_mask = batch.predicted_structure_info.atom_mask,
+
+    acat_atoms_to_q_gather_idxs = batch.atom_cross_att.token_atoms_to_queries.gather_idxs,
+    acat_atoms_to_q_gather_mask = batch.atom_cross_att.token_atoms_to_queries.gather_mask,
+
+    acat_q_to_k_gather_idxs = batch.atom_cross_att.queries_to_keys.gather_idxs,
+    acat_q_to_k_gather_mask = batch.atom_cross_att.queries_to_keys.gather_mask,
+
+    acat_t_to_q_gather_idxs = batch.atom_cross_att.tokens_to_queries.gather_idxs,
+    acat_t_to_q_gather_mask = batch.atom_cross_att.tokens_to_queries.gather_mask,
+
+    acat_q_to_atom_gather_idxs = batch.atom_cross_att.queries_to_token_atoms.gather_idxs,
+    acat_q_to_atom_gather_mask = batch.atom_cross_att.queries_to_token_atoms.gather_mask,
+
+    acat_t_to_k_gather_idxs = batch.atom_cross_att.tokens_to_keys.gather_idxs,
+    acat_t_to_k_gather_mask = batch.atom_cross_att.tokens_to_keys.gather_mask,
+
+    ref_ops = batch.ref_structure.positions,
+    ref_mask = batch.ref_structure.mask,
+    ref_element = batch.ref_structure.element,
+    ref_charge = batch.ref_structure.charge,
+    ref_atom_name_chars = batch.ref_structure.atom_name_chars,
+    ref_space_uid = batch.ref_structure.ref_space_uid
+
+    do=DiffusionOne()
+    params.import_jax_weights_(do,model_path)
+    dh=do.diffusion_head
+    noise_levels = diffusion_head.noise_schedule(
+    torch.linspace(0, 1, 2000 + 1, device='cpu'))
+    noise_level = noise_levels[0]
+    positions = torch.randn((len,24,) + (3,), device='cpu')
+     # torch.random.set_rng_state(original_state)
+    positions *= noise_level
+
+    noise_level_prev = noise_level
+    noise_level = noise_levels[1 + 1]
+    positions = diffusion_head.random_augmentation(
+         positions=positions, mask=pred_dense_atom_mask
+    )
+    gamma = 0.8 * (noise_level > 1.0)
+    t_hat = noise_level_prev * (1 + gamma)
+    noise_scale = 1.003 * torch.sqrt(t_hat ** 2 - noise_level_prev ** 2)
+    # noise = noise_scale *torch.randn(size=positions.shape, device=noise_scale.device)
+    noise = noise_scale
+    positions_noisy = positions + noise
 
 
 
@@ -38,12 +86,10 @@ class DiffusionOne(nn.Module):
         self.evoformer_pair_channel = 128
         self.evoformer_seq_channel = 384
 
-        # self.diffusion_head = diffusion_head.DiffusionHead()
-        self.diffusion_head = torch.compile(diffusion_head.DiffusionHead(), dynamic=True,backend="openvino",
-                                            options={"device": "CPU","model_caching" : True, "cache_dir": "./model_cache"})
+        self.diffusion_head = diffusion_head.DiffusionHead()
+
     # opts = {"device": "CPU", "config": {"PERFORMANCE_HINT": "LATENCY"}, "model_caching": True,
     #         "cache_dir": "./model_cache"}
-
     def _apply_denoising_step(
         self,
         token_index, residue_index, asym_id, entity_id, sym_id,
@@ -147,8 +193,7 @@ class DiffusionOne(nn.Module):
         positions *= noise_level
 
         # noise_level = torch.tile(noise_levels[None, 0], (num_samples,))
-        print("noise levels[0]",noise_levels[1].shape,noise_levels[1].dtype)
-        print("noise level:",noise_level.shape,noise_level.dtype)
+
         for step_idx in range(self.diffusion_steps):
             positions, noise_level = self._apply_denoising_step(
                 token_index=token_index, residue_index=residue_index, asym_id=asym_id,

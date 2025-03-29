@@ -44,8 +44,8 @@ from evoformer.evoformer import EvoFormerOne
 from evoformer.misc import params as evoformer_params
 import time
 
-from diffusionWorker.diffusionOne import DiffusionOne
-from diffusionWorker.misc import params as diffusion_params
+from diffusionWorker2.diffusionOne import DiffusionOne
+from diffusionWorker2.misc import params as diffusion_params
 
 _HOME_DIR = pathlib.Path(os.environ.get('HOME'))
 DEFAULT_MODEL_DIR = _HOME_DIR / 'models/model_103275239_1'
@@ -239,9 +239,11 @@ class ModelRunner:
                 self.target_feat = ipex.optimize(self.target_feat,weights_prepack=False,optimize_lstm=True,auto_kernel_selection=True,dtype=torch.bfloat16)
                 self.evoformer = ipex.optimize(self.evoformer,weights_prepack=False,optimize_lstm=True,auto_kernel_selection=True,dtype=torch.bfloat16)
                 self.diffusion = ipex.optimize(self.diffusion,weights_prepack=False,optimize_lstm=True,auto_kernel_selection=True,dtype=torch.bfloat16)
-                opts = {"device": "CPU", "config": {"PERFORMANCE_HINT": "LATENCY"}, "model_caching" : True,"cache_dir": "./model_cache"}
+                # opts = {"device": "CPU", "config": {"PERFORMANCE_HINT": "LATENCY"}, "model_caching" : True,"cache_dir": "./model_cache"}
                 # self.diffusion=torch.compile(self.diffusion,dynamic=True,backend="openvino",options=opts)
-
+                # self.evoformer.evoformer=torch.compile(self.evoformer.evoformer, backend="openvino",dynamic=True)
+                # self.diffusion.diffusion_head=torch.compile(self.diffusion.diffusion_head, backend="openvino",dynamic=False,options=opts)
+                # self.evoformer
                 # ov_model=ov.convert_model()
             if _CPU_FLUSH_DENORM_OPT:
                 torch.set_flush_denormal(True)
@@ -319,7 +321,9 @@ class ModelRunner:
                         ref_atom_name_chars=batch.ref_structure.atom_name_chars,
                         ref_space_uid=batch.ref_structure.ref_space_uid
                     )
+                    time1=time.time()
                     embeddings=self.evoformer(featurised_example,target_feat=target_feat)
+                    print("Evoformer took %.2f seconds" % (time.time()-time1))
                     pred_dense_atom_mask = batch.predicted_structure_info.atom_mask
 
                     positions = torch.zeros((_NUM_DIFFUSION_SAMPLES.value,) + pred_dense_atom_mask.shape + (3,), device='cpu', dtype=torch.float32)
@@ -534,38 +538,41 @@ class ModelRunner:
 
                         # 假设输出名为 "positions"，根据模型实际情况调整
                         # positions[i] = torch.from_numpy(outputs[0])
-                        positions[i]=self.diffusion(single=embeddings['single'],pair=embeddings['pair'],target_feat=target_feat,
-                                    seq_mask=batch.token_features.mask,
-                                    token_index=batch.token_features.token_index,
-                                    residue_index=batch.token_features.residue_index,
-                                    asym_id=batch.token_features.asym_id,
-                                    entity_id=batch.token_features.entity_id,
-                                    sym_id=batch.token_features.sym_id,
-
-                                    pred_dense_atom_mask=batch.predicted_structure_info.atom_mask,
-
-                                    acat_atoms_to_q_gather_idxs=batch.atom_cross_att.token_atoms_to_queries.gather_idxs,
-                                    acat_atoms_to_q_gather_mask=batch.atom_cross_att.token_atoms_to_queries.gather_mask,
-
-                                    acat_q_to_k_gather_idxs=batch.atom_cross_att.queries_to_keys.gather_idxs,
-                                    acat_q_to_k_gather_mask=batch.atom_cross_att.queries_to_keys.gather_mask,
-
-                                    acat_t_to_q_gather_idxs=batch.atom_cross_att.tokens_to_queries.gather_idxs,
-                                    acat_t_to_q_gather_mask=batch.atom_cross_att.tokens_to_queries.gather_mask,
-
-                                    acat_q_to_atom_gather_idxs=batch.atom_cross_att.queries_to_token_atoms.gather_idxs,
-                                    acat_q_to_atom_gather_mask=batch.atom_cross_att.queries_to_token_atoms.gather_mask,
-
-                                    acat_t_to_k_gather_idxs=batch.atom_cross_att.tokens_to_keys.gather_idxs,
-                                    acat_t_to_k_gather_mask=batch.atom_cross_att.tokens_to_keys.gather_mask,
-
-                                    ref_ops=batch.ref_structure.positions,
-                                    ref_mask=batch.ref_structure.mask,
-                                    ref_element=batch.ref_structure.element,
-                                    ref_charge=batch.ref_structure.charge,
-                                    ref_atom_name_chars=batch.ref_structure.atom_name_chars,
-                                    ref_space_uid=batch.ref_structure.ref_space_uid
-                                                    )
+                        # positions[i]=self.diffusion(single=embeddings['single'],pair=embeddings['pair'],target_feat=target_feat,
+                        #             seq_mask=batch.token_features.mask,
+                        #             token_index=batch.token_features.token_index,
+                        #             residue_index=batch.token_features.residue_index,
+                        #             asym_id=batch.token_features.asym_id,
+                        #             entity_id=batch.token_features.entity_id,
+                        #             sym_id=batch.token_features.sym_id,
+                        #
+                        #             pred_dense_atom_mask=batch.predicted_structure_info.atom_mask,
+                        #
+                        #             acat_atoms_to_q_gather_idxs=batch.atom_cross_att.token_atoms_to_queries.gather_idxs,
+                        #             acat_atoms_to_q_gather_mask=batch.atom_cross_att.token_atoms_to_queries.gather_mask,
+                        #
+                        #             acat_q_to_k_gather_idxs=batch.atom_cross_att.queries_to_keys.gather_idxs,
+                        #             acat_q_to_k_gather_mask=batch.atom_cross_att.queries_to_keys.gather_mask,
+                        #
+                        #             acat_t_to_q_gather_idxs=batch.atom_cross_att.tokens_to_queries.gather_idxs,
+                        #             acat_t_to_q_gather_mask=batch.atom_cross_att.tokens_to_queries.gather_mask,
+                        #
+                        #             acat_q_to_atom_gather_idxs=batch.atom_cross_att.queries_to_token_atoms.gather_idxs,
+                        #             acat_q_to_atom_gather_mask=batch.atom_cross_att.queries_to_token_atoms.gather_mask,
+                        #
+                        #             acat_t_to_k_gather_idxs=batch.atom_cross_att.tokens_to_keys.gather_idxs,
+                        #             acat_t_to_k_gather_mask=batch.atom_cross_att.tokens_to_keys.gather_mask,
+                        #
+                        #             ref_ops=batch.ref_structure.positions,
+                        #             ref_mask=batch.ref_structure.mask,
+                        #             ref_element=batch.ref_structure.element,
+                        #             ref_charge=batch.ref_structure.charge,
+                        #             ref_atom_name_chars=batch.ref_structure.atom_name_chars,
+                        #             ref_space_uid=batch.ref_structure.ref_space_uid
+                        #                             )
+                        positions[i] = self.diffusion(featurised_example,single=embeddings['single'], pair=embeddings['pair'],
+                                                      target_feat=target_feat,
+                                                      )
                         print("diffusion cost time: ", time.time() - time1)
 
                     result=self._model(featurised_example,embeddings,positions)
@@ -666,9 +673,9 @@ def predict_structure(
         inference_start_time = time.time()
 
         # set the random seed for the model.
-        # random.seed(seed)
-        # torch.manual_seed(seed)
-        # np.random.seed(seed)
+        random.seed(seed)
+        torch.manual_seed(seed)
+        np.random.seed(seed)
 
         result = model_runner.run_inference(example)
         if _CPU_INFERENCE.value==False:
