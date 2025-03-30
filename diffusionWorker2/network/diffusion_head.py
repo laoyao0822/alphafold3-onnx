@@ -191,13 +191,26 @@ class DiffusionHead(nn.Module):
 
     def forward(
         self,
+        single,pair,target_feat,
         token_index, residue_index, asym_id, entity_id, sym_id,
         seq_mask, pred_dense_atom_mask,
         ref_ops, ref_mask, ref_element, ref_charge, ref_atom_name_chars, ref_space_uid,
+
+        acat_atoms_to_q_gather_idxs,
+        acat_atoms_to_q_gather_mask,
+        acat_q_to_k_gather_idxs,
+        acat_q_to_k_gather_mask,
+        acat_t_to_q_gather_idxs,
+        acat_t_to_q_gather_mask,
+        acat_q_to_atom_gather_idxs,
+        acat_q_to_atom_gather_mask,
+        acat_t_to_k_gather_idxs,
+        acat_t_to_k_gather_mask,
+
         positions_noisy: torch.Tensor,
         noise_level: torch.Tensor,
-        batch: feat_batch.Batch,
-        embeddings: dict[str, torch.Tensor],
+        # batch: feat_batch.Batch,
+        # embeddings: dict[str, torch.Tensor],
         # use_conditioning: bool
     ) -> torch.Tensor:
         # Get conditioning
@@ -211,7 +224,8 @@ class DiffusionHead(nn.Module):
             token_index=token_index, residue_index=residue_index,
             asym_id=asym_id, entity_id=entity_id, sym_id=sym_id,
             # embeddings=embeddings,
-            single=embeddings['single'], pair=embeddings['pair'], target_feat=embeddings['target_feat'],
+            # single=embeddings['single'], pair=embeddings['pair'], target_feat=embeddings['target_feat'],
+            single=single, pair=pair, target_feat=target_feat,
             noise_level=noise_level,
             # use_conditioning=use_conditioning,
         )
@@ -228,9 +242,22 @@ class DiffusionHead(nn.Module):
             ref_ops=ref_ops, ref_mask=ref_mask, ref_element=ref_element, ref_charge=ref_charge,
             ref_atom_name_chars=ref_atom_name_chars, ref_space_uid=ref_space_uid,
             pred_dense_atom_mask=pred_dense_atom_mask,
-            batch=batch,
+            # batch=batch,
+
+            acat_atoms_to_q_gather_idxs=acat_atoms_to_q_gather_idxs,
+            acat_atoms_to_q_gather_mask=acat_atoms_to_q_gather_mask,
+            acat_q_to_k_gather_idxs=acat_q_to_k_gather_idxs,
+            acat_q_to_k_gather_mask=acat_q_to_k_gather_mask,
+            acat_t_to_q_gather_idxs=acat_t_to_q_gather_idxs,
+            acat_t_to_q_gather_mask=acat_t_to_q_gather_mask,
+            acat_q_to_atom_gather_idxs=acat_q_to_atom_gather_idxs,
+            acat_q_to_atom_gather_mask=acat_q_to_atom_gather_mask,
+            acat_t_to_k_gather_idxs=acat_t_to_k_gather_idxs,
+            acat_t_to_k_gather_mask=acat_t_to_k_gather_mask,
+
             token_atoms_act=act,
-            trunk_single_cond=embeddings['single'],
+            # trunk_single_cond=embeddings['single'],
+            trunk_single_cond=single,
             trunk_pair_cond=trunk_pair_cond,
         )
         act = enc.token_act
@@ -240,6 +267,7 @@ class DiffusionHead(nn.Module):
         )
 
         act = self.transformer(
+
             act=act,
             single_cond=trunk_single_cond,
             mask=seq_mask,
@@ -249,7 +277,14 @@ class DiffusionHead(nn.Module):
 
         # (Possibly) atom-granularity decoder
         position_update = self.atom_cross_att_decoder(
-            batch=batch,
+            acat_atoms_to_q_gather_idxs=acat_atoms_to_q_gather_idxs,
+            acat_atoms_to_q_gather_mask=acat_atoms_to_q_gather_mask,
+            acat_q_to_k_gather_idxs=acat_q_to_k_gather_idxs,
+            acat_q_to_k_gather_mask=acat_q_to_k_gather_mask,
+
+            acat_q_to_atom_gather_idxs=acat_q_to_atom_gather_idxs,
+            acat_q_to_atom_gather_mask=acat_q_to_atom_gather_mask,
+            # batch=batch,
             token_act=act,
             enc=enc,
         )

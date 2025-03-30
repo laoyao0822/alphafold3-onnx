@@ -211,10 +211,20 @@ class AtomCrossAttEncoder(nn.Module):
         self,
         ref_ops, ref_mask, ref_element, ref_charge, ref_atom_name_chars, ref_space_uid,
         pred_dense_atom_mask,
-        batch: feat_batch.Batch,
-        token_atoms_act: Optional[torch.Tensor] = None,
-        trunk_single_cond: Optional[torch.Tensor] = None,
-        trunk_pair_cond: Optional[torch.Tensor] = None
+        # batch: feat_batch.Batch,
+        acat_atoms_to_q_gather_idxs,
+        acat_atoms_to_q_gather_mask,
+        acat_q_to_k_gather_idxs,
+        acat_q_to_k_gather_mask,
+        acat_t_to_q_gather_idxs,
+        acat_t_to_q_gather_mask,
+        acat_q_to_atom_gather_idxs,
+        acat_q_to_atom_gather_mask,
+        acat_t_to_k_gather_idxs,
+        acat_t_to_k_gather_mask,
+        token_atoms_act,
+        trunk_single_cond,
+        trunk_pair_cond
     ) -> AtomCrossAttEncoderOutput:
 
         assert (token_atoms_act is not None) == self.with_token_atoms_act
@@ -231,18 +241,18 @@ class AtomCrossAttEncoder(nn.Module):
         )
         # pred_dense_atom_mask = batch.predicted_structure_info.atom_mask
         # token_atoms_mask = batch.predicted_structure_info.atom_mask
-        acat_atoms_to_q_gather_idxs = batch.atom_cross_att.token_atoms_to_queries.gather_idxs
-        acat_atoms_to_q_gather_mask=batch.atom_cross_att.token_atoms_to_queries.gather_mask
-        acat_t_to_q_gather_idxs = batch.atom_cross_att.tokens_to_queries.gather_idxs
-        acat_t_to_q_gather_mask = batch.atom_cross_att.tokens_to_queries.gather_mask
-
-        acat_q_to_k_gather_idxs = batch.atom_cross_att.queries_to_keys.gather_idxs
-        acat_q_to_k_gather_mask = batch.atom_cross_att.queries_to_keys.gather_mask
-
-        acat_t_to_k_gather_idxs = batch.atom_cross_att.tokens_to_keys.gather_idxs
-        acat_t_to_k_gather_mask = batch.atom_cross_att.tokens_to_keys.gather_mask
-        acat_q_to_atom_gather_idxs = batch.atom_cross_att.queries_to_token_atoms.gather_idxs
-        acat_q_to_atom_gather_mask = batch.atom_cross_att.queries_to_token_atoms.gather_mask
+        # acat_atoms_to_q_gather_idxs = batch.atom_cross_att.token_atoms_to_queries.gather_idxs
+        # acat_atoms_to_q_gather_mask=batch.atom_cross_att.token_atoms_to_queries.gather_mask
+        # acat_t_to_q_gather_idxs = batch.atom_cross_att.tokens_to_queries.gather_idxs
+        # acat_t_to_q_gather_mask = batch.atom_cross_att.tokens_to_queries.gather_mask
+        #
+        # acat_q_to_k_gather_idxs = batch.atom_cross_att.queries_to_keys.gather_idxs
+        # acat_q_to_k_gather_mask = batch.atom_cross_att.queries_to_keys.gather_mask
+        #
+        # acat_t_to_k_gather_idxs = batch.atom_cross_att.tokens_to_keys.gather_idxs
+        # acat_t_to_k_gather_mask = batch.atom_cross_att.tokens_to_keys.gather_mask
+        # acat_q_to_atom_gather_idxs = batch.atom_cross_att.queries_to_token_atoms.gather_idxs
+        # acat_q_to_atom_gather_mask = batch.atom_cross_att.queries_to_token_atoms.gather_mask
         # queries_single_cond = atom_layout.convert(
         #     batch.atom_cross_att.token_atoms_to_queries,
         #     token_atoms_single_cond,
@@ -508,6 +518,8 @@ class AtomCrossAttDecoder(nn.Module):
 
         self.per_atom_channels = 128
 
+
+
         self.project_token_features_for_broadcast = nn.Linear(
             768, self.per_atom_channels, bias=False)
 
@@ -520,21 +532,39 @@ class AtomCrossAttDecoder(nn.Module):
             self.per_atom_channels, 3, bias=False)
 
     def forward(self,
-                batch: feat_batch.Batch,
+                acat_atoms_to_q_gather_idxs,
+                acat_atoms_to_q_gather_mask,
+
+                acat_q_to_k_gather_idxs,
+                acat_q_to_k_gather_mask,
+
+                acat_q_to_atom_gather_idxs,
+                acat_q_to_atom_gather_mask,
+
+                # batch: feat_batch.Batch,
                 token_act: torch.Tensor,  # (num_tokens, ch)
                 enc: AtomCrossAttEncoderOutput) -> torch.Tensor:
-        acat_q_to_k_gather_idxs = batch.atom_cross_att.queries_to_keys.gather_idxs
-        acat_q_to_k_gather_mask = batch.atom_cross_att.queries_to_keys.gather_mask
+        # acat_q_to_k_gather_idxs = batch.atom_cross_att.queries_to_keys.gather_idxs
+        # acat_q_to_k_gather_mask = batch.atom_cross_att.queries_to_keys.gather_mask
         token_act = self.project_token_features_for_broadcast(token_act)
-        num_token, max_atoms_per_token = (
-            batch.atom_cross_att.queries_to_token_atoms.shape
-        )
+        num_token, max_atoms_per_token = acat_q_to_atom_gather_idxs.shape
+            # batch.atom_cross_att.queries_to_token_atoms.shape
+
+
+        # print("num_token", num_token,"max_atoms_per_token", max_atoms_per_token)
         token_atom_act = torch.broadcast_to(
             token_act[:, None, :],
             (num_token, max_atoms_per_token, self.per_atom_channels),
         )
-        queries_act = atom_layout.convert(
-            batch.atom_cross_att.token_atoms_to_queries,
+        # queries_act = atom_layout.convert(
+        #     batch.atom_cross_att.token_atoms_to_queries,
+        #     token_atom_act,
+        #     layout_axes=(-3, -2),
+        # )
+        queries_act = atom_layout.convertV2(
+            # batch.atom_cross_att.token_atoms_to_queries,
+            acat_atoms_to_q_gather_idxs,
+            acat_atoms_to_q_gather_mask,
             token_atom_act,
             layout_axes=(-3, -2),
         )
@@ -558,8 +588,15 @@ class AtomCrossAttDecoder(nn.Module):
         queries_act = self.atom_features_layer_norm(queries_act)
         queries_position_update = self.atom_features_to_position_update(
             queries_act)
-        position_update = atom_layout.convert(
-            batch.atom_cross_att.queries_to_token_atoms,
+        # position_update = atom_layout.convert(
+        #     batch.atom_cross_att.queries_to_token_atoms,
+        #     queries_position_update,
+        #     layout_axes=(-3, -2),
+        # )
+        position_update = atom_layout.convertV2(
+            # batch.atom_cross_att.queries_to_token_atoms,
+            acat_q_to_atom_gather_idxs,
+            acat_q_to_atom_gather_mask,
             queries_position_update,
             layout_axes=(-3, -2),
         )
