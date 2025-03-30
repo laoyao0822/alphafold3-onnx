@@ -343,7 +343,9 @@ class DiffusionCrossAttTransformer(nn.Module):
         self,
         queries_act: torch.Tensor,  # (num_subsets, num_queries, ch)
         queries_mask: torch.Tensor,  # (num_subsets, num_queries)
-        queries_to_keys: atom_layout.GatherInfo,  # (num_subsets, num_keys)
+        # queries_to_keys: atom_layout.GatherInfo,  # (num_subsets, num_keys)
+        acat_q_to_k_gather_idxs,
+        acat_q_to_k_gather_mask,
         keys_mask: torch.Tensor,  # (num_subsets, num_keys)
         queries_single_cond: torch.Tensor,  # (num_subsets, num_queries, ch)
         keys_single_cond: torch.Tensor,  # (num_subsets, num_keys, ch)
@@ -357,8 +359,14 @@ class DiffusionCrossAttTransformer(nn.Module):
             pair_logits, 'n q k (b h) -> b n h q k', h=self.num_head)
 
         for block_idx in range(self.num_blocks):
-            keys_act = atom_layout.convert(
-                queries_to_keys, queries_act, layout_axes=(-3, -2)
+            # keys_act = atom_layout.convert(
+            #     queries_to_keys, queries_act, layout_axes=(-3, -2)
+            # )
+            keys_act = atom_layout.convertV2(
+                # queries_to_keys,
+                acat_q_to_k_gather_idxs,
+                acat_q_to_k_gather_mask,
+                queries_act, layout_axes=(-3, -2)
             )
 
             queries_act += self.cross_attention[block_idx](

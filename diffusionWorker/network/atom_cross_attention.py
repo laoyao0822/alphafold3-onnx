@@ -331,7 +331,8 @@ class AtomCrossAttEncoder(nn.Module):
             # Gather the conditioning and add it to the atom-pair activations.
             pair_act += atom_layout.convertV2(
                 num_tokens * acat_t_to_q_gather_idxs[:, :, None]
-                + acat_t_to_k_gather_idxs[:, None, :], (
+                + acat_t_to_k_gather_idxs[:, None, :],
+                (
                         acat_t_to_q_gather_mask[:, :, None]
                         & acat_t_to_k_gather_mask[:, None, :]
                 ), trunk_pair_cond, layout_axes=(-3, -2)

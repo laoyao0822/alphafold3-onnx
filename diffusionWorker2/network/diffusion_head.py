@@ -191,6 +191,9 @@ class DiffusionHead(nn.Module):
 
     def forward(
         self,
+        token_index, residue_index, asym_id, entity_id, sym_id,
+        seq_mask, pred_dense_atom_mask,
+        ref_ops, ref_mask, ref_element, ref_charge, ref_atom_name_chars, ref_space_uid,
         positions_noisy: torch.Tensor,
         noise_level: torch.Tensor,
         batch: feat_batch.Batch,
@@ -200,11 +203,13 @@ class DiffusionHead(nn.Module):
         # Get conditioning
         trunk_single_cond, trunk_pair_cond = self._conditioning(
             # batch=batch,
-            token_index=batch.token_features.token_index,
-            residue_index=batch.token_features.residue_index,
-            asym_id=batch.token_features.asym_id,
-            entity_id=batch.token_features.entity_id,
-            sym_id=batch.token_features.sym_id,
+            # token_index=batch.token_features.token_index,
+            # residue_index=batch.token_features.residue_index,
+            # asym_id=batch.token_features.asym_id,
+            # entity_id=batch.token_features.entity_id,
+            # sym_id=batch.token_features.sym_id,
+            token_index=token_index, residue_index=residue_index,
+            asym_id=asym_id, entity_id=entity_id, sym_id=sym_id,
             # embeddings=embeddings,
             single=embeddings['single'], pair=embeddings['pair'], target_feat=embeddings['target_feat'],
             noise_level=noise_level,
@@ -212,14 +217,17 @@ class DiffusionHead(nn.Module):
         )
 
         # Extract features
-        seq_mask = batch.token_features.mask
-        atom_mask = batch.predicted_structure_info.atom_mask
+        # seq_mask = batch.token_features.mask
+        # pred_dense_atom_mask = batch.predicted_structure_info.atom_mask
 
         # Position features
         # act = positions_noisy * atom_mask[..., None]
-        act = positions_noisy * atom_mask[..., None] / torch.sqrt(noise_level**2 + SIGMA_DATA**2)
+        act = positions_noisy * pred_dense_atom_mask[..., None] / torch.sqrt(noise_level**2 + SIGMA_DATA**2)
 
         enc = self.atom_cross_att_encoder(
+            ref_ops=ref_ops, ref_mask=ref_mask, ref_element=ref_element, ref_charge=ref_charge,
+            ref_atom_name_chars=ref_atom_name_chars, ref_space_uid=ref_space_uid,
+            pred_dense_atom_mask=pred_dense_atom_mask,
             batch=batch,
             token_atoms_act=act,
             trunk_single_cond=embeddings['single'],
@@ -254,4 +262,4 @@ class DiffusionHead(nn.Module):
 
         return (
             skip_scaling * positions_noisy + out_scaling * position_update
-        ) * atom_mask[..., None]
+        ) * pred_dense_atom_mask[..., None]

@@ -68,12 +68,26 @@ class DiffusionOne(nn.Module):
         # noise = noise_scale
         positions_noisy = positions + noise
 
-        positions_denoised = self.diffusion_head(positions_noisy=positions_noisy,
-                                                 noise_level=t_hat,
-                                                 batch=batch,
-                                                 embeddings=embeddings,
-                                                 # use_conditioning=True
-                                                 )
+        positions_denoised = self.diffusion_head(
+            token_index=batch.token_features.token_index,
+            residue_index=batch.token_features.residue_index,
+            asym_id=batch.token_features.asym_id,
+            entity_id=batch.token_features.entity_id,
+            sym_id=batch.token_features.sym_id,
+            seq_mask = batch.token_features.mask,
+            pred_dense_atom_mask = batch.predicted_structure_info.atom_mask,
+            ref_ops=batch.ref_structure.positions,
+            ref_mask=batch.ref_structure.mask,
+            ref_element=batch.ref_structure.element,
+            ref_charge=batch.ref_structure.charge,
+            ref_atom_name_chars=batch.ref_structure.atom_name_chars,
+            ref_space_uid=batch.ref_structure.ref_space_uid,
+            positions_noisy=positions_noisy,
+            noise_level=t_hat,
+            batch=batch,
+            embeddings=embeddings,
+            # use_conditioning=True
+            )
         grad = (positions_noisy - positions_denoised) / t_hat
 
         d_t = noise_level - t_hat
@@ -104,7 +118,7 @@ class DiffusionOne(nn.Module):
         # noise_level = torch.tile(noise_levels[None, 0], (num_samples,))
 
 
-        print("start sample diffusion",positions.shape)
+        print("diffusion2 start sample diffusion",positions.shape)
         # positions_t=positions[self.rank].to(device=device,dtype=torch.float32).contiguous()
 
         for step_idx in range(self.diffusion_steps):
