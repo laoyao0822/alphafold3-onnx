@@ -45,12 +45,15 @@ from evoformer.misc import params as evoformer_params
 import time
 
 from diffusionWorker2.diffusionOne import DiffusionOne
+from diffusionWorker2.diffusionOne import diffusion
+
 from diffusionWorker2.misc import params as diffusion_params
 
 _HOME_DIR = pathlib.Path(os.environ.get('HOME'))
 DEFAULT_MODEL_DIR = _HOME_DIR / 'models/model_103275239_1'
 DEFAULT_DB_DIR = _HOME_DIR / 'public_databases'
-ONNX_PATH = '/root/pycharm/diffusion_onnx5/diffusion.onnx'
+ONNX_PATH = '/root/pycharm/diffusion_head_onnx6/diffusion_head.onnx'
+OPENVINO_PATH = '/root/pycharm/diffusion_head_openvino'
 
 # Input and output paths.
 _JSON_PATH = flags.DEFINE_string(
@@ -221,9 +224,10 @@ class ModelRunner:
         # session = ort.InferenceSession(ONNX_PATH, sess_options=sess_options,provider_options=['OpenVINO_CPU'])
         # self.diffusion=session
 
-        self.diffusion=DiffusionOne()
-        self.diffusion.eval()
-        diffusion_params.import_jax_weights_(self.diffusion,model_dir)
+        self.diffusion=diffusion()
+        self.diffusion.diffusion_head.eval()
+        # diffusion_params.import_jax_weights_(self.diffusion,model_dir)
+        self.diffusion.import_diffusion_head_params(model_dir)
         #
         # self._model = self._model.to(device=self._device)
         
@@ -234,13 +238,13 @@ class ModelRunner:
                 import intel_extension_for_pytorch as ipex
                 import openvino as ov
                 print("Applying Intel Extension for PyTorch optimizations...")
-                self._model = ipex.optimize(self._model,weights_prepack=False,optimize_lstm=True,auto_kernel_selection=True,dtype=torch.bfloat16)
+                # self._model = ipex.optimize(self._model,weights_prepack=False,optimize_lstm=True,auto_kernel_selection=True,dtype=torch.bfloat16)
 
-                self.target_feat = ipex.optimize(self.target_feat,weights_prepack=False,optimize_lstm=True,auto_kernel_selection=True,dtype=torch.bfloat16)
-                self.evoformer = ipex.optimize(self.evoformer,weights_prepack=False,optimize_lstm=True,auto_kernel_selection=True,dtype=torch.bfloat16)
-                self.diffusion = ipex.optimize(self.diffusion,weights_prepack=False,optimize_lstm=True,auto_kernel_selection=True,dtype=torch.bfloat16)
+                # self.target_feat = ipex.optimize(self.target_feat,weights_prepack=False,optimize_lstm=True,auto_kernel_selection=True,dtype=torch.bfloat16)
+                # self.evoformer = ipex.optimize(self.evoformer,weights_prepack=False,optimize_lstm=True,auto_kernel_selection=True,dtype=torch.bfloat16)
+                # self.diffusion.diffusion_head = ipex.optimize(self.diffusion.diffusion_head,weights_prepack=False,optimize_lstm=True,auto_kernel_selection=True,dtype=torch.bfloat16)
                 # opts = {"device": "CPU", "config": {"PERFORMANCE_HINT": "LATENCY"}, "model_caching" : True,"cache_dir": "./model_cache"}
-                # self.diffusion=torch.compile(self.diffusion,dynamic=True,backend="openvino",options=opts)
+                # self.diffusion.diffusion_head=torch.compile(self.diffusion.diffusion_head,backend="openvino",options=opts)
                 # self.evoformer.evoformer=torch.compile(self.evoformer.evoformer, backend="openvino",dynamic=True)
                 # self.diffusion.diffusion_head=torch.compile(self.diffusion.diffusion_head, backend="openvino",dynamic=False,options=opts)
                 # self.evoformer
@@ -285,7 +289,7 @@ class ModelRunner:
 
         else: # CPU Inference
             if _CPU_AMP_OPT:
-                with torch.amp.autocast(device_type="cpu", dtype=torch.bfloat16):
+                # with torch.amp.autocast(device_type="cpu", dtype=torch.bfloat16):
                     print("Running inference with AMP on CPU...")
                     # self._model=torch.jit.trace(self._model,featurised_example)
                     # result = self._model(featurised_example)
@@ -328,156 +332,15 @@ class ModelRunner:
 
                     positions = torch.zeros((_NUM_DIFFUSION_SAMPLES.value,) + pred_dense_atom_mask.shape + (3,), device='cpu', dtype=torch.float32)
 
-
-                    seq_len = torch.export.Dim('seq_len', min=10, max=1600)
-                    edge_number = torch.export.Dim('edge_number', min=10, max=1500)
-
-                    ordered_keys = [
-                        'single', 'pair', 'target_feat',
-                        'seq_mask', 'token_index', 'residue_index', 'asym_id', 'entity_id', 'sym_id',
-                        'pred_dense_atom_mask',
-                        'acat_atoms_to_q_gather_idxs', 'acat_atoms_to_q_gather_mask',
-                        'acat_q_to_k_gather_idxs', 'acat_q_to_k_gather_mask',
-                        'acat_t_to_q_gather_idxs', 'acat_t_to_q_gather_mask',
-                        'acat_q_to_atom_gather_idxs', 'acat_q_to_atom_gather_mask',
-                        'acat_t_to_k_gather_idxs', 'acat_t_to_k_gather_mask',
-                        'ref_ops', 'ref_mask', 'ref_element', 'ref_charge', 'ref_atom_name_chars', 'ref_space_uid',
-                    ]
-
-                    kwarg_inputs = {
-                        'single' : embeddings['single'],
-                        'pair' : embeddings['pair'],
-                        'target_feat' : target_feat,
-                        'seq_mask': batch.token_features.mask,
-                        'token_index': batch.token_features.token_index,
-                        'residue_index': batch.token_features.residue_index,
-                        'asym_id': batch.token_features.asym_id,
-                        'entity_id': batch.token_features.entity_id,
-                        'sym_id': batch.token_features.sym_id,
-
-                        'pred_dense_atom_mask': batch.predicted_structure_info.atom_mask,
-
-                        'acat_atoms_to_q_gather_idxs': batch.atom_cross_att.token_atoms_to_queries.gather_idxs,
-                        'acat_atoms_to_q_gather_mask': batch.atom_cross_att.token_atoms_to_queries.gather_mask,
-
-                        'acat_q_to_k_gather_idxs': batch.atom_cross_att.queries_to_keys.gather_idxs,
-                        'acat_q_to_k_gather_mask': batch.atom_cross_att.queries_to_keys.gather_mask,
-
-                        'acat_t_to_q_gather_idxs': batch.atom_cross_att.tokens_to_queries.gather_idxs,
-                        'acat_t_to_q_gather_mask': batch.atom_cross_att.tokens_to_queries.gather_mask,
-
-                        'acat_q_to_atom_gather_idxs': batch.atom_cross_att.queries_to_token_atoms.gather_idxs,
-                        'acat_q_to_atom_gather_mask': batch.atom_cross_att.queries_to_token_atoms.gather_mask,
-
-                        'acat_t_to_k_gather_idxs': batch.atom_cross_att.tokens_to_keys.gather_idxs,
-                        'acat_t_to_k_gather_mask': batch.atom_cross_att.tokens_to_keys.gather_mask,
-
-                        'ref_ops': batch.ref_structure.positions,
-                        'ref_mask': batch.ref_structure.mask,
-                        'ref_element': batch.ref_structure.element,
-                        'ref_charge': batch.ref_structure.charge,
-                        'ref_atom_name_chars': batch.ref_structure.atom_name_chars,
-                        'ref_space_uid': batch.ref_structure.ref_space_uid,
-
-                    }
-                    ordered_inputs = tuple(kwarg_inputs[key] for key in ordered_keys)
-
-                    output_names = ["atom_positions"]
-                    # if True:
-                    #     print("start to export")
-                    #     export_di = torch.export.export(self.diffusion,ordered_inputs,dynamic_shapes={
-                    #                       # 一维序列数据
-                    #                       'single':{0:seq_len},
-                    #                       'pair':{0:seq_len,1:seq_len},
-                    #                       'target_feat':{0:seq_len},
-                    #                       'seq_mask': {0: seq_len},
-                    #                       'token_index': {0: seq_len},
-                    #                       'residue_index': {0: seq_len},
-                    #                       'asym_id': {0: seq_len},
-                    #                       'entity_id': {0: seq_len},
-                    #                       'sym_id': {0: seq_len},
-                    #
-                    #                       'pred_dense_atom_mask': {0: seq_len},
-                    #
-                    #                       # 图谱注意力相关
-                    #                       'acat_atoms_to_q_gather_idxs': {0: edge_number},
-                    #                       'acat_atoms_to_q_gather_mask': {0: edge_number},
-                    #
-                    #                       'acat_q_to_k_gather_idxs': {0: edge_number},
-                    #                       'acat_q_to_k_gather_mask': {0: edge_number},
-                    #
-                    #                       'acat_t_to_q_gather_idxs': {0: edge_number},
-                    #                       'acat_t_to_q_gather_mask': {0: edge_number},
-                    #
-                    #                       'acat_q_to_atom_gather_idxs': {0: seq_len},
-                    #                       'acat_q_to_atom_gather_mask': {0: seq_len},
-                    #                       'acat_t_to_k_gather_idxs': {0: edge_number},
-                    #                       'acat_t_to_k_gather_mask': {0: edge_number},
-                    #                       # 参考结构
-                    #                       'ref_ops': {0: seq_len},
-                    #                       'ref_mask': {0: seq_len},
-                    #                       'ref_element': {0: seq_len},
-                    #                       'ref_charge': {0: seq_len},
-                    #                       'ref_atom_name_chars': {0: seq_len},
-                    #                       'ref_space_uid': {0: seq_len},
-                    #
-                    #                   } ,strict=False)
-                    #     print("export done start to convert to openvino")
-                    #     ov_model=ov.convert_model(export_di)
-                    #     print("convert to openvino done start to save")
-                    #     ov.save_model(ov_model,"/root/diffusion.xml",)
-                    #     print("successfully saved to openvino")
-                    #     exit(0)
+                    # self.diffusion.getOpenvinoModel(batch=featurised_example,
+                    #                             single=embeddings['single'],pair=embeddings['pair'],target_feat=target_feat,
+                    #                             save_path=OPENVINO_PATH)
+                    self.diffusion.getOnnxModel(batch=featurised_example,
+                                            single=embeddings['single'], pair=embeddings['pair'],
+                                            target_feat=target_feat,
+                                            save_path=ONNX_PATH)
 
 
-                    # print("start to export:", ONNX_PATH)
-                    # torch.onnx.export(self.diffusion,
-                    #                   ordered_inputs, f=ONNX_PATH, dynamo=True,
-                    #                   input_names=ordered_keys,
-                    #                   output_names=output_names,
-                    #                   opset_version=17,
-                    #                   export_params=True,
-                    #                   dynamic_shapes={
-                    #                       # 一维序列数据
-                    #                       'single':{0:seq_len},
-                    #                       'pair':{0:seq_len,1:seq_len},
-                    #                       'target_feat':{0:seq_len},
-                    #                       'seq_mask': {0: seq_len},
-                    #                       'token_index': {0: seq_len},
-                    #                       'residue_index': {0: seq_len},
-                    #                       'asym_id': {0: seq_len},
-                    #                       'entity_id': {0: seq_len},
-                    #                       'sym_id': {0: seq_len},
-                    #
-                    #                       'pred_dense_atom_mask': {0: seq_len},
-                    #
-                    #                       # 图谱注意力相关
-                    #                       'acat_atoms_to_q_gather_idxs': {0: edge_number},
-                    #                       'acat_atoms_to_q_gather_mask': {0: edge_number},
-                    #
-                    #                       'acat_q_to_k_gather_idxs': {0: edge_number},
-                    #                       'acat_q_to_k_gather_mask': {0: edge_number},
-                    #
-                    #                       'acat_t_to_q_gather_idxs': {0: edge_number},
-                    #                       'acat_t_to_q_gather_mask': {0: edge_number},
-                    #
-                    #                       'acat_q_to_atom_gather_idxs': {0: seq_len},
-                    #                       'acat_q_to_atom_gather_mask': {0: seq_len},
-                    #                       'acat_t_to_k_gather_idxs': {0: edge_number},
-                    #                       'acat_t_to_k_gather_mask': {0: edge_number},
-                    #                       # 参考结构
-                    #                       'ref_ops': {0: seq_len},
-                    #                       'ref_mask': {0: seq_len},
-                    #                       'ref_element': {0: seq_len},
-                    #                       'ref_charge': {0: seq_len},
-                    #                       'ref_atom_name_chars': {0: seq_len},
-                    #                       'ref_space_uid': {0: seq_len},
-                    #
-                    #                   },
-                    #                   # dynamic_axes={'input': {}, 'output': {}},dynamo=True
-                    #                   )
-                    # print("save onnx done:", ONNX_PATH)
-                    # exit(0)
                     # inputs = {
                     #     "single": embeddings['single'].cpu().numpy().astype(np.float32),
                     #     "pair": embeddings['pair'].cpu().numpy().astype(np.float32),
@@ -570,7 +433,7 @@ class ModelRunner:
                         #             ref_atom_name_chars=batch.ref_structure.atom_name_chars,
                         #             ref_space_uid=batch.ref_structure.ref_space_uid
                         #                             )
-                        positions[i] = self.diffusion(featurised_example,single=embeddings['single'], pair=embeddings['pair'],
+                        positions[i] = self.diffusion.forward(featurised_example,single=embeddings['single'], pair=embeddings['pair'],
                                                       target_feat=target_feat,
                                                       )
                         print("diffusion cost time: ", time.time() - time1)
