@@ -14,14 +14,18 @@ def gated_linear_unit_torch(x, weight):
 
 
 def gated_linear_unit(x, weight):
-    if _TRITON_GLU_OPT:
-        out = gated_linear_unit_triton(x, weight)
-    elif _CUDA_GLU_OPT:
-        weight = weight.contiguous()
-        out = gated_linear_unit_cuda.glu(x, weight)
-    else:
-        out = gated_linear_unit_torch(x, weight)
+    y = torch.matmul(x, weight)
+    a, b = torch.chunk(y, 2, dim=-1)
+    out = torch.nn.functional.silu(a) * b
     return out
+    # if _TRITON_GLU_OPT:
+    #     out = gated_linear_unit_triton(x, weight)
+    # elif _CUDA_GLU_OPT:
+    #     weight = weight.contiguous()
+    #     out = gated_linear_unit_cuda.glu(x, weight)
+    # else:
+    #     out = gated_linear_unit_torch(x, weight)
+    # return out
 
 def get_cuda_autotune_config():
     return [

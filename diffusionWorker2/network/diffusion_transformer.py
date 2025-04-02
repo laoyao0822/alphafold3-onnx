@@ -101,7 +101,7 @@ class DiffusionTransition(nn.Module):
                  num_intermediate_factor: int = 2,
                  use_single_cond: bool = False) -> None:
         super(DiffusionTransition, self).__init__()
-
+        # print("DiffusionTransition:c_single_cond :", c_single_cond)
         self.c_x = c_x
         self.c_single_cond = c_single_cond
         self.num_intermediate_factor = num_intermediate_factor
@@ -177,7 +177,8 @@ class SelfAttention(nn.Module):
         # print(f'q: {q.shape}, k: {k.shape}, v: {v.shape}')
         q, k, v = map(lambda t: einops.rearrange(
             t, 'n (h c) -> h n c', h=self.num_head).unsqueeze(0), [q, k, v])
-
+        #qkv dim 4 bias shape torch.Size([16, 107, 107])
+        # print("qkv dim",q.dim(),"mask shape",mask.shape)
         weighted_avg = dot_product_attention(
             q, k, v, mask=mask, bias=pair_logits
         )

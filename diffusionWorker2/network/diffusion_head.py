@@ -295,7 +295,9 @@ class DiffusionHead(nn.Module):
             torch.sqrt(noise_level**2 + SIGMA_DATA**2)
         )
 
-        positions_denoised= (
+        # positions_denoised= (
+        #     skip_scaling * positions_noisy + out_scaling * position_update
+        # ) * pred_dense_atom_mask[..., None]
+        return (
             skip_scaling * positions_noisy + out_scaling * position_update
         ) * pred_dense_atom_mask[..., None]
-        return positions_denoised

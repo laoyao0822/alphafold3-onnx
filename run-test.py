@@ -52,7 +52,7 @@ from diffusionWorker2.misc import params as diffusion_params
 _HOME_DIR = pathlib.Path(os.environ.get('HOME'))
 DEFAULT_MODEL_DIR = _HOME_DIR / 'models/model_103275239_1'
 DEFAULT_DB_DIR = _HOME_DIR / 'public_databases'
-ONNX_PATH = '/root/pycharm/diffusion_head_onnx6/diffusion_head.onnx'
+ONNX_PATH = '/root/pycharm/diffusion_head_onnx_base/diffusion_head.onnx'
 OPENVINO_PATH = '/root/pycharm/diffusion_head_openvino'
 
 # Input and output paths.
@@ -238,11 +238,11 @@ class ModelRunner:
                 import intel_extension_for_pytorch as ipex
                 import openvino as ov
                 print("Applying Intel Extension for PyTorch optimizations...")
-                # self._model = ipex.optimize(self._model,weights_prepack=False,optimize_lstm=True,auto_kernel_selection=True,dtype=torch.bfloat16)
+                self._model = ipex.optimize(self._model,weights_prepack=False,optimize_lstm=True,auto_kernel_selection=True,dtype=torch.bfloat16)
 
-                # self.target_feat = ipex.optimize(self.target_feat,weights_prepack=False,optimize_lstm=True,auto_kernel_selection=True,dtype=torch.bfloat16)
-                # self.evoformer = ipex.optimize(self.evoformer,weights_prepack=False,optimize_lstm=True,auto_kernel_selection=True,dtype=torch.bfloat16)
-                # self.diffusion.diffusion_head = ipex.optimize(self.diffusion.diffusion_head,weights_prepack=False,optimize_lstm=True,auto_kernel_selection=True,dtype=torch.bfloat16)
+                self.target_feat = ipex.optimize(self.target_feat,weights_prepack=False,optimize_lstm=True,auto_kernel_selection=True,dtype=torch.bfloat16)
+                self.evoformer = ipex.optimize(self.evoformer,weights_prepack=False,optimize_lstm=True,auto_kernel_selection=True,dtype=torch.bfloat16)
+                self.diffusion.diffusion_head = ipex.optimize(self.diffusion.diffusion_head,weights_prepack=False,optimize_lstm=True,auto_kernel_selection=True,dtype=torch.bfloat16)
                 # opts = {"device": "CPU", "config": {"PERFORMANCE_HINT": "LATENCY"}, "model_caching" : True,"cache_dir": "./model_cache"}
                 # self.diffusion.diffusion_head=torch.compile(self.diffusion.diffusion_head,backend="openvino",options=opts)
                 # self.evoformer.evoformer=torch.compile(self.evoformer.evoformer, backend="openvino",dynamic=True)
@@ -289,7 +289,7 @@ class ModelRunner:
 
         else: # CPU Inference
             if _CPU_AMP_OPT:
-                # with torch.amp.autocast(device_type="cpu", dtype=torch.bfloat16):
+                with torch.amp.autocast(device_type="cpu", dtype=torch.bfloat16):
                     print("Running inference with AMP on CPU...")
                     # self._model=torch.jit.trace(self._model,featurised_example)
                     # result = self._model(featurised_example)
@@ -335,10 +335,10 @@ class ModelRunner:
                     # self.diffusion.getOpenvinoModel(batch=featurised_example,
                     #                             single=embeddings['single'],pair=embeddings['pair'],target_feat=target_feat,
                     #                             save_path=OPENVINO_PATH)
-                    self.diffusion.getOnnxModel(batch=featurised_example,
-                                            single=embeddings['single'], pair=embeddings['pair'],
-                                            target_feat=target_feat,
-                                            save_path=ONNX_PATH)
+                    # self.diffusion.getOnnxModel(batch=featurised_example,
+                    #                         single=embeddings['single'], pair=embeddings['pair'],
+                    #                         target_feat=target_feat,
+                    #                         save_path=ONNX_PATH)
 
 
                     # inputs = {
