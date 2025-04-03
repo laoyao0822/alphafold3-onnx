@@ -19,8 +19,8 @@ import torch.nn.functional as F
 from diffusionWorker2.misc import feat_batch
 from diffusionWorker2.network import atom_layout, utils
 from diffusionWorker2.network.diffusion_transformer import DiffusionCrossAttTransformer
-
-from diffusionWorker2.network.layer_norm import LayerNorm
+from torch.nn import LayerNorm
+# from diffusionWorker2.network.layer_norm import LayerNorm
 
 @dataclasses.dataclass(frozen=True)
 class AtomCrossAttEncoderOutput:
@@ -123,6 +123,7 @@ class AtomCrossAttEncoder(nn.Module):
             self.c_trunk_single_cond = 384
             self.lnorm_trunk_single_cond = LayerNorm(
                 self.c_trunk_single_cond, bias=False)
+            self.lnorm_trunk_single_cond=nn.LayerNorm(self.c_trunk_single_cond, bias=False)
             self.embed_trunk_single_cond = nn.Linear(
                 self.c_trunk_single_cond, self.per_atom_channels, bias=False)
 

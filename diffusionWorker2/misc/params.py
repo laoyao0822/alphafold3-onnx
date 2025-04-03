@@ -616,12 +616,10 @@ def import_diffusion_head_params(model, model_path: pathlib.Path):
     # FIXME： workaround: numpy生成的傅立叶嵌入和jnp实现行为不一致，最终导致非物理结构。于是先用原版jax生成并保存为npy供torchfold3使用
     fourier_embeddings_weight = np.load(
         open("fourier_embeddings/weight.npy", "rb"))
-    fourier_embeddings.register_buffer(
-        "weight", torch.from_numpy(fourier_embeddings_weight))
+    fourier_embeddings.weight.data = torch.from_numpy(fourier_embeddings_weight)
     fourier_embeddings_bias = np.load(
         open("fourier_embeddings/bias.npy", "rb"))
-    fourier_embeddings.register_buffer(
-        "bias", torch.from_numpy(fourier_embeddings_bias))
+    fourier_embeddings.bias.data = torch.from_numpy(fourier_embeddings_bias)
 
 # 最激动人心的一集
 def import_jax_weights_(model, model_path: pathlib.Path):

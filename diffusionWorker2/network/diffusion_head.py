@@ -16,7 +16,8 @@ from diffusionWorker2.misc import feat_batch
 from diffusionWorker2.network import featurization, utils
 from diffusionWorker2.network.diffusion_transformer import DiffusionTransformer, DiffusionTransition
 from diffusionWorker2.network.atom_cross_attention import AtomCrossAttEncoder, AtomCrossAttDecoder
-from diffusionWorker2.network.layer_norm import LayerNorm
+# from diffusionWorker2.network.layer_norm import LayerNorm
+from torch.nn import LayerNorm
 
 # Carefully measured by averaging multimer training set.
 SIGMA_DATA = 16.0
@@ -26,6 +27,13 @@ class FourierEmbeddings(nn.Module):
     def __init__(self, dim: int):
         super(FourierEmbeddings, self).__init__()
         self.dim = dim
+        self.weight = nn.Parameter(torch.empty((256,))).requires_grad_(False)
+        self.bias = nn.Parameter(torch.empty((256,))).requires_grad_(False)
+        # self.reset_parameters()
+
+    # def reset_parameters(self):
+    #     nn.init.zeros_(self.weight)
+    #     nn.init.zeros_(self.bias)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
 
@@ -295,9 +303,10 @@ class DiffusionHead(nn.Module):
             torch.sqrt(noise_level**2 + SIGMA_DATA**2)
         )
 
-        # positions_denoised= (
-        #     skip_scaling * positions_noisy + out_scaling * position_update
-        # ) * pred_dense_atom_mask[..., None]
-        return (
+        positions_denoised= (
             skip_scaling * positions_noisy + out_scaling * position_update
         ) * pred_dense_atom_mask[..., None]
+        # return (
+        #     skip_scaling * positions_noisy + out_scaling * position_update
+        # ) * pred_dense_atom_mask[..., None]
+        return positions_denoised

@@ -48,11 +48,13 @@ from diffusionWorker2.diffusionOne import DiffusionOne
 from diffusionWorker2.diffusionOne import diffusion
 
 from diffusionWorker2.misc import params as diffusion_params
-
+DIFFUSION_ONNX=False
+SAVE_ONNX=True
 _HOME_DIR = pathlib.Path(os.environ.get('HOME'))
 DEFAULT_MODEL_DIR = _HOME_DIR / 'models/model_103275239_1'
 DEFAULT_DB_DIR = _HOME_DIR / 'public_databases'
-ONNX_PATH = '/root/pycharm/diffusion_head_onnx_base/diffusion_head.onnx'
+ONNX_PATH = '/root/pycharm/diffusion_head_onnx_base2/diffusion_head.onnx'
+# ONNX_PATH='/root/pycharm/diffusion_head_onnx_base_fp16/diffusion_head.onnx'
 OPENVINO_PATH = '/root/pycharm/diffusion_head_openvino'
 
 # Input and output paths.
@@ -223,18 +225,22 @@ class ModelRunner:
         # # sess_options.AddConfigEntry(ort.SessionOptions.kOrtSessionOptionEpContextEnable, "1");
         # session = ort.InferenceSession(ONNX_PATH, sess_options=sess_options,provider_options=['OpenVINO_CPU'])
         # self.diffusion=session
-
-        self.diffusion=diffusion()
-        self.diffusion.diffusion_head.eval()
+        if not DIFFUSION_ONNX:
+            self.diffusion=diffusion()
+            self.diffusion.diffusion_head.eval()
         # diffusion_params.import_jax_weights_(self.diffusion,model_dir)
-        self.diffusion.import_diffusion_head_params(model_dir)
+            self.diffusion.import_diffusion_head_params(model_dir)
         #
         # self._model = self._model.to(device=self._device)
-        
+        else:
+            self.diffusion=diffusion()
+            self.diffusion.initOnnxModel(ONNX_PATH)
+            self.diffusion.import_diffusion_head_params(model_dir)
+
         # Apply IPEX optimization for CPU if device is CPU
         if _CPU_INFERENCE.value:
             print("mkl",torch.backends.mkl.is_available(),"onednn",torch.backends.mkldnn.is_available())
-            if True:
+            if not SAVE_ONNX and not DIFFUSION_ONNX:
                 import intel_extension_for_pytorch as ipex
                 import openvino as ov
                 print("Applying Intel Extension for PyTorch optimizations...")
@@ -289,7 +295,7 @@ class ModelRunner:
 
         else: # CPU Inference
             if _CPU_AMP_OPT:
-                with torch.amp.autocast(device_type="cpu", dtype=torch.bfloat16):
+                # with torch.amp.autocast(device_type="cpu", dtype=torch.bfloat16):
                     print("Running inference with AMP on CPU...")
                     # self._model=torch.jit.trace(self._model,featurised_example)
                     # result = self._model(featurised_example)
@@ -335,62 +341,12 @@ class ModelRunner:
                     # self.diffusion.getOpenvinoModel(batch=featurised_example,
                     #                             single=embeddings['single'],pair=embeddings['pair'],target_feat=target_feat,
                     #                             save_path=OPENVINO_PATH)
-                    # self.diffusion.getOnnxModel(batch=featurised_example,
-                    #                         single=embeddings['single'], pair=embeddings['pair'],
-                    #                         target_feat=target_feat,
-                    #                         save_path=ONNX_PATH)
+                    if SAVE_ONNX:
+                        self.diffusion.getOnnxModel(batch=featurised_example,
+                                            single=embeddings['single'], pair=embeddings['pair'],
+                                            target_feat=target_feat,
+                                            save_path=ONNX_PATH)
 
-
-                    # inputs = {
-                    #     "single": embeddings['single'].cpu().numpy().astype(np.float32),
-                    #     "pair": embeddings['pair'].cpu().numpy().astype(np.float32),
-                    #     "target_feat": target_feat.cpu().numpy().astype(np.float32),
-                    #     "seq_mask": batch.token_features.mask.cpu().numpy().astype(np.bool),
-                    #     "token_index": batch.token_features.token_index.cpu().numpy().astype(np.int32),
-                    #     "residue_index": batch.token_features.residue_index.cpu().numpy().astype(np.int32),
-                    #     "asym_id": batch.token_features.asym_id.cpu().numpy().astype(np.int32),
-                    #     "entity_id": batch.token_features.entity_id.cpu().numpy().astype(np.int32),
-                    #     "sym_id": batch.token_features.sym_id.cpu().numpy().astype(np.int32),
-                    #     "pred_dense_atom_mask": batch.predicted_structure_info.atom_mask.cpu().numpy().astype(np.bool),
-                    #     # 交叉注意力相关输入（以 acat_ 开头的参数）
-                    #     "acat_atoms_to_q_gather_idxs": batch.atom_cross_att.token_atoms_to_queries.gather_idxs.cpu().numpy().astype(
-                    #         np.int64),
-                    #     "acat_atoms_to_q_gather_mask": batch.atom_cross_att.token_atoms_to_queries.gather_mask.cpu().numpy().astype(
-                    #         np.bool),
-                    #     "acat_q_to_k_gather_idxs": batch.atom_cross_att.queries_to_keys.gather_idxs.cpu().numpy().astype(
-                    #         np.int64),
-                    #     "acat_q_to_k_gather_mask": batch.atom_cross_att.queries_to_keys.gather_mask.cpu().numpy().astype(
-                    #         np.bool),
-                    #     "acat_t_to_q_gather_idxs": batch.atom_cross_att.tokens_to_queries.gather_idxs.cpu().numpy().astype(
-                    #         np.int64),
-                    #     "acat_t_to_q_gather_mask": batch.atom_cross_att.tokens_to_queries.gather_mask.cpu().numpy().astype(
-                    #         np.bool),
-                    #     "acat_q_to_atom_gather_idxs": batch.atom_cross_att.queries_to_token_atoms.gather_idxs.cpu().numpy().astype(
-                    #         np.int64),
-                    #     "acat_q_to_atom_gather_mask": batch.atom_cross_att.queries_to_token_atoms.gather_mask.cpu().numpy().astype(
-                    #         np.bool),
-                    #     "acat_t_to_k_gather_idxs": batch.atom_cross_att.tokens_to_keys.gather_idxs.cpu().numpy().astype(
-                    #         np.int64),
-                    #     "acat_t_to_k_gather_mask": batch.atom_cross_att.tokens_to_keys.gather_mask.cpu().numpy().astype(
-                    #         np.bool),
-                    #     # 参考结构相关输入
-                    #     "ref_ops": batch.ref_structure.positions.cpu().numpy().astype(np.float32),
-                    #     "ref_mask": batch.ref_structure.mask.cpu().numpy().astype(np.bool),
-                    #     "ref_element": batch.ref_structure.element.cpu().numpy().astype(np.int32),
-                    #     "ref_charge": batch.ref_structure.charge.cpu().numpy().astype(np.float32),
-                    #     "ref_atom_name_chars": batch.ref_structure.atom_name_chars.cpu().numpy().astype(np.int32),
-                    #     "ref_space_uid": batch.ref_structure.ref_space_uid.cpu().numpy().astype(np.int32)
-                    # }
-                    #
-                    # # 确保内存连续性（重要优化！）
-                    # for key in inputs:
-                    #     inputs[key] = np.ascontiguousarray(inputs[key])
-                    # output_names = [output.name for output in self.diffusion.get_outputs()]
-                    # print(output_names)
-                    # artifacts = torch.compiler.save_cache_artifacts()
-                    # assert artifacts is not None
-                    # artifact_bytes, cache_info = artifacts
-                    # torch.compiler.load_cache_artifacts(artifact_bytes)
                     for i in range(_NUM_DIFFUSION_SAMPLES.value):
                         # print("diffusion sample %d" % i)
                         time1 = time.time()
@@ -433,11 +389,12 @@ class ModelRunner:
                         #             ref_atom_name_chars=batch.ref_structure.atom_name_chars,
                         #             ref_space_uid=batch.ref_structure.ref_space_uid
                         #                             )
+
                         positions[i] = self.diffusion.forward(featurised_example,single=embeddings['single'], pair=embeddings['pair'],
-                                                      target_feat=target_feat,
+                                                      target_feat=target_feat,USE_ONNX=DIFFUSION_ONNX
                                                       )
                         print("diffusion cost time: ", time.time() - time1)
-
+                # with torch.amp.autocast(device_type="cpu", dtype=torch.bfloat16):
                     result=self._model(featurised_example,embeddings,positions)
 
                     # if torch.allclose(result, target_feat, rtol=1e-5):
