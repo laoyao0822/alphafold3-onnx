@@ -48,14 +48,14 @@ from diffusionWorker2.diffusionOne import DiffusionOne
 from diffusionWorker2.diffusionOne import diffusion
 
 from diffusionWorker2.misc import params as diffusion_params
-DIFFUSION_ONNX=False
-SAVE_ONNX=True
+DIFFUSION_ONNX=True
+SAVE_ONNX=False
 _HOME_DIR = pathlib.Path(os.environ.get('HOME'))
 DEFAULT_MODEL_DIR = _HOME_DIR / 'models/model_103275239_1'
 DEFAULT_DB_DIR = _HOME_DIR / 'public_databases'
 ONNX_PATH = '/root/pycharm/diffusion_head_onnx_base2/diffusion_head.onnx'
 # ONNX_PATH='/root/pycharm/diffusion_head_onnx_base_fp16/diffusion_head.onnx'
-OPENVINO_PATH = '/root/pycharm/diffusion_head_openvino'
+OPENVINO_PATH = '/root/pycharm/openvino_model/model.xml'
 
 # Input and output paths.
 _JSON_PATH = flags.DEFINE_string(
@@ -234,8 +234,9 @@ class ModelRunner:
         # self._model = self._model.to(device=self._device)
         else:
             self.diffusion=diffusion()
-            self.diffusion.initOnnxModel(ONNX_PATH)
-            self.diffusion.import_diffusion_head_params(model_dir)
+            # self.diffusion.initOnnxModel(ONNX_PATH)
+            self.diffusion.initOpenvinoModel(OPENVINO_PATH)
+            # self.diffusion.import_diffusion_head_params(model_dir)
 
         # Apply IPEX optimization for CPU if device is CPU
         if _CPU_INFERENCE.value:

@@ -10,12 +10,13 @@
 import sys
 from typing import Tuple
 
+import openvino as ov
 import torch
 import torch.nn as nn
 import time
 import torch.distributed as dist
 import onnxruntime as ort
-
+from openvino import Core
 import pathlib
 import diffusionWorker2.misc.params as params
 import diffusionWorker2.misc.feat_batch as feat_batch
@@ -358,16 +359,15 @@ class diffusion():
         print("ONNX DIFFUSION check success")
         print("available provider",ort.get_available_providers())
         sess_options = ort.SessionOptions()
-        device_type = "CPU_FP16"
+        # device_type = "CPU_FP16"
         # sess_options.num_of_threads = 59
         # sess_options.spip install onnxruntime-openvino
         # sess_options.enable_profiling = True
-        sess_options.intra_op_num_threads = 60
+        # sess_options.intra_op_num_threads = 60
         # sess_options.add_session_config_entry('session.intra_op_thread_affinities','1;2;3;4;5;6;7;8;9;10;11;12;13;14;15;16;17;18;19;20;21;22;23;24;25;26;27;28;29;30;31;32;33;34;35;36;37;38;39;40;41;42;43;44;46;47;48;49;50;51;52;53;54;55;56;57;58;59;60')  # set affinities of all 7 threads to cores in the first NUMA node
         sess_options.execution_mode = ort.ExecutionMode.ORT_PARALLEL
-
         sess_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_EXTENDED
-        sess_options.optimized_model_filepath = "/root/pycharm/diffusion_head_onnx_opt/diffusion_head.onnx"
+        # sess_options.optimized_model_filepath = "/root/pycharm/diffusion_head_onnx_opt/diffusion_head.onnx"
         # vino_device='CPU_FP32'
         ort.set_default_logger_severity(3)
         # providers = [("OpenVINOExecutionProvider", {
@@ -380,6 +380,18 @@ class diffusion():
         # session = ort.InferenceSession(onnx_path,options=sess_options,providers=providers)
         # session.set_providers(['OpenVINOExecutionProvider'],[{'device_type':device_type,'num_of_threads':59}])
         self.onnx_model = session
+    def initOpenvinoModel(self,openvino_path):
+        self.core = Core()
+        # 加载模型
+        self.openvino = self.core.read_model(model=openvino_path)
+        # 编译模型
+        self.compiled_model = self.core.compile_model(
+            model=self.openvino,
+            device_name='CPU'
+        )
+        # 获取输入/输出信息
+        self.inputs_info = self.compiled_model.inputs
+        self.outputs_info = self.compiled_model.outputs
 
     def _apply_denoising_step(
             self,
@@ -455,104 +467,125 @@ class diffusion():
             # use_conditioning=True
             )
         else:
-        #     inputs = {
-        #         "single":single.cpu().numpy().astype(np.float32),
-        #         "pair": pair.cpu().numpy().astype(np.float32),
-        #         "target_feat": target_feat.cpu().numpy().astype(np.float32),
-        #         "token_index": token_index.numpy().astype(np.int32),
-        #         "residue_index": residue_index.numpy().astype(np.int32),
-        #         "asym_id": asym_id.numpy().astype(np.int32),
-        #         "entity_id": entity_id.numpy().astype(np.int32),
-        #         "sym_id": sym_id.numpy().astype(np.int32),
-        #         "seq_mask": seq_mask.numpy().astype(np.bool),
-        #         "pred_dense_atom_mask": pred_dense_atom_mask.numpy().astype(np.bool),
-        #
-        #         "ref_ops": ref_ops.numpy().astype(np.float32),
-        #         "ref_mask": ref_mask.numpy().astype(np.bool),
-        #         "ref_element": ref_element.numpy().astype(np.int32),
-        #         "ref_charge": ref_charge.numpy().astype(np.float32),
-        #         "ref_atom_name_chars": ref_atom_name_chars.numpy().astype(np.int32),
-        #         "ref_space_uid": ref_space_uid.numpy().astype(np.int32),
-        #      # 交叉注意力相关输入（以 acat_ 开头的参数）
-        #         "acat_atoms_to_q_gather_idxs": acat_atoms_to_q_gather_idxs.numpy().astype(
-        #         np.int64),
-        #         "acat_atoms_to_q_gather_mask": acat_atoms_to_q_gather_mask.numpy().astype(
-        #         np.bool),
-        #         "acat_q_to_k_gather_idxs": acat_q_to_k_gather_idxs.numpy().astype(
-        #         np.int64),
-        #         "acat_q_to_k_gather_mask": acat_q_to_k_gather_mask.numpy().astype(
-        #         np.bool),
-        #         "acat_t_to_q_gather_idxs": acat_t_to_q_gather_idxs.numpy().astype(
-        #         np.int64),
-        #         "acat_t_to_q_gather_mask": acat_t_to_q_gather_mask.numpy().astype(
-        #         np.bool),
-        #         "acat_q_to_atom_gather_idxs": acat_q_to_atom_gather_idxs.numpy().astype(
-        #         np.int64),
-        #         "acat_q_to_atom_gather_mask": acat_q_to_atom_gather_mask.numpy().astype(
-        #         np.bool),
-        #         "acat_t_to_k_gather_idxs": acat_t_to_k_gather_idxs.numpy().astype(
-        #         np.int64),
-        #         "acat_t_to_k_gather_mask": acat_t_to_k_gather_mask.numpy().astype(
-        #         np.bool),
-        #         'positions_noisy': positions_noisy.numpy(),
-        #         'noise_level': noise_level.numpy(),
-        # }
-        # if True:
             inputs = {
-            "single": single.numpy().astype(np.float32),
-            "pair": pair.numpy().astype(np.float32),
-            "target_feat": target_feat.cpu().numpy().astype(np.float32),
-            "seq_mask": batch.token_features.mask.cpu().numpy().astype(np.bool),
-            "token_index": batch.token_features.token_index.cpu().numpy().astype(np.int32),
-            "residue_index": batch.token_features.residue_index.cpu().numpy().astype(np.int32),
-            "asym_id": batch.token_features.asym_id.cpu().numpy().astype(np.int32),
-            "entity_id": batch.token_features.entity_id.cpu().numpy().astype(np.int32),
-            "sym_id": batch.token_features.sym_id.cpu().numpy().astype(np.int32),
-            "pred_dense_atom_mask": batch.predicted_structure_info.atom_mask.cpu().numpy().astype(np.bool),
-            # 交叉注意力相关输入（以 acat_ 开头的参数）
-            "acat_atoms_to_q_gather_idxs": batch.atom_cross_att.token_atoms_to_queries.gather_idxs.cpu().numpy().astype(
-                np.int64),
-            "acat_atoms_to_q_gather_mask": batch.atom_cross_att.token_atoms_to_queries.gather_mask.cpu().numpy().astype(
-                np.bool),
-            "acat_q_to_k_gather_idxs": batch.atom_cross_att.queries_to_keys.gather_idxs.cpu().numpy().astype(
-                np.int64),
-            "acat_q_to_k_gather_mask": batch.atom_cross_att.queries_to_keys.gather_mask.cpu().numpy().astype(
-                np.bool),
-            "acat_t_to_q_gather_idxs": batch.atom_cross_att.tokens_to_queries.gather_idxs.cpu().numpy().astype(
-                np.int64),
-            "acat_t_to_q_gather_mask": batch.atom_cross_att.tokens_to_queries.gather_mask.cpu().numpy().astype(
-                np.bool),
-            "acat_q_to_atom_gather_idxs": batch.atom_cross_att.queries_to_token_atoms.gather_idxs.cpu().numpy().astype(
-                np.int64),
-            "acat_q_to_atom_gather_mask": batch.atom_cross_att.queries_to_token_atoms.gather_mask.cpu().numpy().astype(
-                np.bool),
-            "acat_t_to_k_gather_idxs": batch.atom_cross_att.tokens_to_keys.gather_idxs.cpu().numpy().astype(
-                np.int64),
-            "acat_t_to_k_gather_mask": batch.atom_cross_att.tokens_to_keys.gather_mask.cpu().numpy().astype(
-                np.bool),
-            # 参考结构相关输入
-            "ref_ops": batch.ref_structure.positions.cpu().numpy().astype(np.float32),
-            "ref_mask": batch.ref_structure.mask.cpu().numpy().astype(np.bool),
-            "ref_element": batch.ref_structure.element.cpu().numpy().astype(np.int32),
-            "ref_charge": batch.ref_structure.charge.cpu().numpy().astype(np.float32),
-            "ref_atom_name_chars": batch.ref_structure.atom_name_chars.cpu().numpy().astype(np.int32),
-            "ref_space_uid": batch.ref_structure.ref_space_uid.cpu().numpy().astype(np.int32),
+                "single":single.cpu().numpy().astype(np.float32),
+                "pair": pair.cpu().numpy().astype(np.float32),
+                "target_feat": target_feat.cpu().numpy().astype(np.float32),
+                "token_index": token_index.numpy().astype(np.int32),
+                "residue_index": residue_index.numpy().astype(np.int32),
+                "asym_id": asym_id.numpy().astype(np.int32),
+                "entity_id": entity_id.numpy().astype(np.int32),
+                "sym_id": sym_id.numpy().astype(np.int32),
+                "seq_mask": seq_mask.numpy().astype(np.bool),
+                "pred_dense_atom_mask": pred_dense_atom_mask.numpy().astype(np.bool),
 
-            'positions_noisy': positions_noisy.numpy().astype(np.float32),
-            'noise_level': t_hat.numpy().astype(np.float32),
+                "ref_ops": ref_ops.numpy().astype(np.float32),
+                "ref_mask": ref_mask.numpy().astype(np.bool),
+                "ref_element": ref_element.numpy().astype(np.int32),
+                "ref_charge": ref_charge.numpy().astype(np.float32),
+                "ref_atom_name_chars": ref_atom_name_chars.numpy().astype(np.int32),
+                "ref_space_uid": ref_space_uid.numpy().astype(np.int32),
+             # 交叉注意力相关输入（以 acat_ 开头的参数）
+                "acat_atoms_to_q_gather_idxs": acat_atoms_to_q_gather_idxs.numpy().astype(
+                np.int64),
+                "acat_atoms_to_q_gather_mask": acat_atoms_to_q_gather_mask.numpy().astype(
+                np.bool),
+                "acat_q_to_k_gather_idxs": acat_q_to_k_gather_idxs.numpy().astype(
+                np.int64),
+                "acat_q_to_k_gather_mask": acat_q_to_k_gather_mask.numpy().astype(
+                np.bool),
+                "acat_t_to_q_gather_idxs": acat_t_to_q_gather_idxs.numpy().astype(
+                np.int64),
+                "acat_t_to_q_gather_mask": acat_t_to_q_gather_mask.numpy().astype(
+                np.bool),
+                "acat_q_to_atom_gather_idxs": acat_q_to_atom_gather_idxs.numpy().astype(
+                np.int64),
+                "acat_q_to_atom_gather_mask": acat_q_to_atom_gather_mask.numpy().astype(
+                np.bool),
+                "acat_t_to_k_gather_idxs": acat_t_to_k_gather_idxs.numpy().astype(
+                np.int64),
+                "acat_t_to_k_gather_mask": acat_t_to_k_gather_mask.numpy().astype(
+                np.bool),
+                'positions_noisy': positions_noisy.numpy(),
+                'noise_level': t_hat.numpy(),
         }
-            output_names = [output.name for output in self.onnx_model.get_outputs()]
-            # 确保内存连续性（重要优化！）
-            # print(output_names)
-            for key in inputs:
-                inputs[key] = np.ascontiguousarray(inputs[key])
-            positions_denoised = self.onnx_model.run(
-                output_names=output_names,
-                input_feed=inputs
-            )
-            # print(len(positions_denoised))
-            # print(positions_denoised[0].shape)
-            positions_denoised=torch.from_numpy(positions_denoised[0])
+        # if True:
+        #     inputs = {
+        #     "single": single.numpy().astype(np.float32),
+        #     "pair": pair.numpy().astype(np.float32),
+        #     "target_feat": target_feat.cpu().numpy().astype(np.float32),
+        #     "seq_mask": batch.token_features.mask.cpu().numpy().astype(np.bool),
+        #     "token_index": batch.token_features.token_index.cpu().numpy().astype(np.int32),
+        #     "residue_index": batch.token_features.residue_index.cpu().numpy().astype(np.int32),
+        #     "asym_id": batch.token_features.asym_id.cpu().numpy().astype(np.int32),
+        #     "entity_id": batch.token_features.entity_id.cpu().numpy().astype(np.int32),
+        #     "sym_id": batch.token_features.sym_id.cpu().numpy().astype(np.int32),
+        #     "pred_dense_atom_mask": batch.predicted_structure_info.atom_mask.cpu().numpy().astype(np.bool),
+        #     # 交叉注意力相关输入（以 acat_ 开头的参数）
+        #     "acat_atoms_to_q_gather_idxs": batch.atom_cross_att.token_atoms_to_queries.gather_idxs.cpu().numpy().astype(
+        #         np.int64),
+        #     "acat_atoms_to_q_gather_mask": batch.atom_cross_att.token_atoms_to_queries.gather_mask.cpu().numpy().astype(
+        #         np.bool),
+        #     "acat_q_to_k_gather_idxs": batch.atom_cross_att.queries_to_keys.gather_idxs.cpu().numpy().astype(
+        #         np.int64),
+        #     "acat_q_to_k_gather_mask": batch.atom_cross_att.queries_to_keys.gather_mask.cpu().numpy().astype(
+        #         np.bool),
+        #     "acat_t_to_q_gather_idxs": batch.atom_cross_att.tokens_to_queries.gather_idxs.cpu().numpy().astype(
+        #         np.int64),
+        #     "acat_t_to_q_gather_mask": batch.atom_cross_att.tokens_to_queries.gather_mask.cpu().numpy().astype(
+        #         np.bool),
+        #     "acat_q_to_atom_gather_idxs": batch.atom_cross_att.queries_to_token_atoms.gather_idxs.cpu().numpy().astype(
+        #         np.int64),
+        #     "acat_q_to_atom_gather_mask": batch.atom_cross_att.queries_to_token_atoms.gather_mask.cpu().numpy().astype(
+        #         np.bool),
+        #     "acat_t_to_k_gather_idxs": batch.atom_cross_att.tokens_to_keys.gather_idxs.cpu().numpy().astype(
+        #         np.int64),
+        #     "acat_t_to_k_gather_mask": batch.atom_cross_att.tokens_to_keys.gather_mask.cpu().numpy().astype(
+        #         np.bool),
+        #     # 参考结构相关输入
+        #     "ref_ops": batch.ref_structure.positions.cpu().numpy().astype(np.float32),
+        #     "ref_mask": batch.ref_structure.mask.cpu().numpy().astype(np.bool),
+        #     "ref_element": batch.ref_structure.element.cpu().numpy().astype(np.int32),
+        #     "ref_charge": batch.ref_structure.charge.cpu().numpy().astype(np.float32),
+        #     "ref_atom_name_chars": batch.ref_structure.atom_name_chars.cpu().numpy().astype(np.int32),
+        #     "ref_space_uid": batch.ref_structure.ref_space_uid.cpu().numpy().astype(np.int32),
+        #
+        #     'positions_noisy': positions_noisy.numpy().astype(np.float32),
+        #     'noise_level': t_hat.numpy().astype(np.float32),
+        # }
+        #     output_names = [output.name for output in self.onnx_model.get_outputs()]
+        #     # 确保内存连续性（重要优化！）
+        #     # print(output_names)
+        #     for key in inputs:
+        #         inputs[key] = np.ascontiguousarray(inputs[key])
+        #     positions_denoised = self.onnx_model.run(
+        #         output_names=output_names,
+        #         input_feed=inputs
+        #     )
+        #
+        #     positions_denoised=torch.from_numpy(positions_denoised[0])
+            infer_request = self.compiled_model.create_infer_request()
+
+            input_keys = self.compiled_model.inputs
+            # print(input_keys)
+            output_keys = self.compiled_model.outputs
+            idx=0
+            # 将数据填充到输入张量
+            for value in inputs.values():
+                # input_names = input_key.names
+                # input_name = input_key.get_any_name()
+                # print("input_name", input_name," index" ,input_key.get_index())
+                ov_tensor = ov.Tensor(value)
+                # if input_name in inputs:
+                infer_request.set_input_tensor(idx, ov_tensor)
+                idx+=1
+
+            # 执行同步推理
+            infer_request.infer()
+            # --------------------------- 获取输出 ------------------------------
+            # 获取输出张量 (假设第一个输出是 positions_denoised)
+            output_tensor = infer_request.get_output_tensor(0)
+            positions_denoised = torch.from_numpy(output_tensor.data)
 
         # if torch.allclose(positions_denoised,positions_denoised2,1e-4):
         #     print("no difference")
