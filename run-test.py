@@ -48,7 +48,7 @@ from diffusionWorker2.diffusionOne import DiffusionOne
 from diffusionWorker2.diffusionOne import diffusion
 
 from diffusionWorker2.misc import params as diffusion_params
-DIFFUSION_ONNX=True
+DIFFUSION_ONNX=False
 SAVE_ONNX=False
 _HOME_DIR = pathlib.Path(os.environ.get('HOME'))
 DEFAULT_MODEL_DIR = _HOME_DIR / 'models/model_103275239_1'
@@ -241,7 +241,7 @@ class ModelRunner:
         # Apply IPEX optimization for CPU if device is CPU
         if _CPU_INFERENCE.value:
             print("mkl",torch.backends.mkl.is_available(),"onednn",torch.backends.mkldnn.is_available())
-            if not SAVE_ONNX and not DIFFUSION_ONNX:
+            if not SAVE_ONNX and  not DIFFUSION_ONNX:
                 import intel_extension_for_pytorch as ipex
                 import openvino as ov
                 print("Applying Intel Extension for PyTorch optimizations...")
@@ -296,15 +296,15 @@ class ModelRunner:
 
         else: # CPU Inference
             if _CPU_AMP_OPT:
-                # with torch.amp.autocast(device_type="cpu", dtype=torch.bfloat16):
+                with torch.amp.autocast(device_type="cpu", dtype=torch.bfloat16):
                     print("Running inference with AMP on CPU...")
                     # self._model=torch.jit.trace(self._model,featurised_example)
                     # result = self._model(featurised_example)
                     # exit(0)
                     batch = feat_batch.Batch.from_data_dict(featurised_example)
+                    time1=time.time()
                     target_feat = self.target_feat(
                         aatype=batch.token_features.aatype,
-
                         profile=batch.msa.profile,
                         deletion_mean=batch.msa.deletion_mean,
 
@@ -332,6 +332,7 @@ class ModelRunner:
                         ref_atom_name_chars=batch.ref_structure.atom_name_chars,
                         ref_space_uid=batch.ref_structure.ref_space_uid
                     )
+                    print("create target feat cost time %.2f seconds"% (time.time()-time1))
                     time1=time.time()
                     embeddings=self.evoformer(featurised_example,target_feat=target_feat)
                     print("Evoformer took %.2f seconds" % (time.time()-time1))

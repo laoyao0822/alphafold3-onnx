@@ -9,7 +9,7 @@
 # https://github.com/google-deepmind/alphafold3/blob/main/WEIGHTS_TERMS_OF_USE.md
 import sys
 from typing import Tuple
-
+from openvino import properties
 import openvino as ov
 import torch
 import torch.nn as nn
@@ -37,6 +37,7 @@ class diffusion():
         self.step_scale = 1.5
         self.diffusion_head = diffusion_head.DiffusionHead()
         self.diffusion_head.eval()
+        self.conversion_time=0
 
     def import_diffusion_head_params(self,model_path: pathlib.Path):
         params.import_diffusion_head_params(self.diffusion_head,model_path)
@@ -143,6 +144,7 @@ class diffusion():
         # custom_translation_table = {
         #     torch.ops.pkg.onnxscript.torch_lib._aten_layer_norm_onnx: convert_aten_layer_norm,
         # }
+
         print("opset: ",opset_version)
         print("start to save")
         torch.onnx.export(self.diffusion_head,
@@ -381,13 +383,28 @@ class diffusion():
         # session.set_providers(['OpenVINOExecutionProvider'],[{'device_type':device_type,'num_of_threads':59}])
         self.onnx_model = session
     def initOpenvinoModel(self,openvino_path):
-        self.core = Core()
+        self.core = ov.Core()
+        # self.core.set_property(
+        # "CPU",
+        #     {   properties.hint.execution_mode: properties.hint.ExecutionMode.PERFORMANCE,
+        #         },
+        #     )
         # 加载模型
         self.openvino = self.core.read_model(model=openvino_path)
         # 编译模型
+        config = {
+            properties.hint.performance_mode: properties.hint.PerformanceMode.LATENCY,
+            properties.inference_num_threads:60,
+            properties.hint.inference_precision: 'bf16',
+            # properties.hint.execution_mode: properties.hint.ExecutionMode.PERFORMANCE
+            # properties.num_streams:1,
+            # "CPU_THREADS_NUM": "60",
+            # "CPU_BIND_THREAD": "YES",
+        }
         self.compiled_model = self.core.compile_model(
             model=self.openvino,
-            device_name='CPU'
+            device_name='CPU',
+            config=config,
         )
         # 获取输入/输出信息
         self.inputs_info = self.compiled_model.inputs
@@ -420,7 +437,7 @@ class diffusion():
             noise_level_prev: torch.Tensor,
             # mask: torch.Tensor,
             noise_level: torch.Tensor,
-            batch,
+            # batch,
             USE_ONNX=False,
     ):
         # pred_dense_atom_mask = batch.predicted_structure_info.atom_mask
@@ -467,6 +484,7 @@ class diffusion():
             # use_conditioning=True
             )
         else:
+            time1=time.time()
             inputs = {
                 "single":single.cpu().numpy().astype(np.float32),
                 "pair": pair.cpu().numpy().astype(np.float32),
@@ -579,7 +597,7 @@ class diffusion():
                 # if input_name in inputs:
                 infer_request.set_input_tensor(idx, ov_tensor)
                 idx+=1
-
+            self.conversion_time+=time.time()-time1
             # 执行同步推理
             infer_request.infer()
             # --------------------------- 获取输出 ------------------------------
@@ -601,7 +619,7 @@ class diffusion():
 
         d_t = noise_level - t_hat
         positions_out = positions_noisy + self.step_scale * d_t * grad
-
+        # return positions_out
         return positions_out, noise_level
 
     def _sample_diffusion(
@@ -632,7 +650,7 @@ class diffusion():
         print("diffusion2 start sample diffusion", positions.shape)
 
         for step_idx in range(self.diffusion_steps):
-            positions, noise_level = self._apply_denoising_step(
+            position,noise_level = self._apply_denoising_step(
                 # single=embeddings['single'], pair=embeddings['pair'], target_feat=embeddings['target_feat'],
                 single=single_c, pair=pair_c, target_feat=target_feat_c,
                 token_index=batch.token_features.token_index,
@@ -658,17 +676,114 @@ class diffusion():
                 acat_t_to_k_gather_mask=batch.atom_cross_att.tokens_to_keys.gather_mask,
                 acat_q_to_atom_gather_idxs=batch.atom_cross_att.queries_to_token_atoms.gather_idxs,
                 acat_q_to_atom_gather_mask=batch.atom_cross_att.queries_to_token_atoms.gather_mask,
-                positions=positions, noise_level_prev=noise_level, noise_level=noise_levels[1 + step_idx],batch=batch,
+                positions=positions, noise_level_prev=noise_level, noise_level=noise_levels[1 + step_idx],
                 USE_ONNX=USE_ONNX,
             )
+            # if (step_idx % 200) == 0:
+            # print("noise_level: ", noise_level)
+        # print("conversion cost time :",self.conversion_time)
         return positions
 
     def forward(self, batch: dict[str, torch.Tensor], single, pair, target_feat,USE_ONNX=False):
+        self.conversion_time=0
         batch = feat_batch.Batch.from_data_dict(batch)
+
         return self._sample_diffusion(batch,
             single, pair, target_feat,USE_ONNX
         )
 
+
+class DiffusionStep(nn.Module):
+    def __init__(self):
+        super(DiffusionStep, self).__init__()
+
+        self.gamma_0 = 0.8
+        self.gamma_min = 1.0
+        self.noise_scale = 1.003
+        self.step_scale = 1.5
+
+        self.tracedFunction=None
+
+        self.diffusion_head = diffusion_head.DiffusionHead()
+    def forward(
+        self,
+        single,pair,target_feat,
+        token_index, residue_index, asym_id, entity_id, sym_id,
+        seq_mask,
+        pred_dense_atom_mask,
+        ref_ops, ref_mask, ref_element, ref_charge, ref_atom_name_chars, ref_space_uid,
+        acat_atoms_to_q_gather_idxs,
+        acat_atoms_to_q_gather_mask,
+
+        acat_q_to_k_gather_idxs,
+        acat_q_to_k_gather_mask,
+
+        acat_t_to_q_gather_idxs,
+        acat_t_to_q_gather_mask,
+
+        acat_q_to_atom_gather_idxs,
+        acat_q_to_atom_gather_mask,
+
+        acat_t_to_k_gather_idxs,
+        acat_t_to_k_gather_mask,
+        # batch: feat_batch.Batch,
+        # embeddings: dict[str, torch.Tensor],
+        positions: torch.Tensor,
+        noise_level_prev: torch.Tensor,
+        # mask: torch.Tensor,
+        noise_level: torch.Tensor
+    ) :
+        # pred_dense_atom_mask = batch.predicted_structure_info.atom_mask
+
+        positions = diffusion_head.random_augmentation(
+            positions=positions, mask=pred_dense_atom_mask
+        )
+
+        gamma = self.gamma_0 * (noise_level > self.gamma_min)
+        t_hat = noise_level_prev * (1 + gamma)
+
+        noise_scale = self.noise_scale * \
+            torch.sqrt(t_hat**2 - noise_level_prev**2)
+        noise = noise_scale * \
+            torch.randn(size=positions.shape, device=noise_scale.device)
+        # noise = noise_scale
+        positions_noisy = positions + noise
+
+        positions_denoised = self.diffusion_head(
+            single=single, pair=pair, target_feat=target_feat,
+            token_index=token_index, residue_index=residue_index,
+            asym_id=asym_id,entity_id=entity_id, sym_id=sym_id,
+
+            seq_mask=seq_mask,
+
+            pred_dense_atom_mask = pred_dense_atom_mask,
+
+            ref_ops=ref_ops, ref_mask=ref_mask, ref_element=ref_element, ref_charge=ref_charge,
+            ref_atom_name_chars=ref_atom_name_chars, ref_space_uid=ref_space_uid,
+
+
+            acat_atoms_to_q_gather_idxs=acat_atoms_to_q_gather_idxs,
+            acat_atoms_to_q_gather_mask=acat_atoms_to_q_gather_mask,
+            acat_q_to_k_gather_idxs=acat_q_to_k_gather_idxs,
+            acat_q_to_k_gather_mask=acat_q_to_k_gather_mask,
+            acat_t_to_q_gather_idxs=acat_t_to_q_gather_idxs,
+            acat_t_to_q_gather_mask=acat_t_to_q_gather_mask,
+            acat_q_to_atom_gather_idxs=acat_q_to_atom_gather_idxs,
+            acat_q_to_atom_gather_mask=acat_q_to_atom_gather_mask,
+            acat_t_to_k_gather_idxs=acat_t_to_k_gather_idxs,
+            acat_t_to_k_gather_mask=acat_t_to_k_gather_mask,
+
+            positions_noisy=positions_noisy,
+            noise_level=t_hat,
+            # batch=batch,
+            # embeddings=embeddings,
+            # use_conditioning=True
+            )
+        grad = (positions_noisy - positions_denoised) / t_hat
+
+        d_t = noise_level - t_hat
+        positions_out = positions_noisy + self.step_scale * d_t * grad
+        return positions_out, noise_level
 
 class DiffusionOne(nn.Module):
 
@@ -844,6 +959,7 @@ class DiffusionOne(nn.Module):
         return self._sample_diffusion(batch,
                                       single,pair,target_feat
         )
+
 
 
 
