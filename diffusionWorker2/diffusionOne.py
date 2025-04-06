@@ -619,8 +619,8 @@ class diffusion():
 
         d_t = noise_level - t_hat
         positions_out = positions_noisy + self.step_scale * d_t * grad
-        # return positions_out
-        return positions_out, noise_level
+        return positions_out
+        # return positions_out, noise_level
 
     def _sample_diffusion(
             self,
@@ -650,7 +650,7 @@ class diffusion():
         print("diffusion2 start sample diffusion", positions.shape)
 
         for step_idx in range(self.diffusion_steps):
-            position,noise_level = self._apply_denoising_step(
+            positions = self._apply_denoising_step(
                 # single=embeddings['single'], pair=embeddings['pair'], target_feat=embeddings['target_feat'],
                 single=single_c, pair=pair_c, target_feat=target_feat_c,
                 token_index=batch.token_features.token_index,
@@ -676,7 +676,7 @@ class diffusion():
                 acat_t_to_k_gather_mask=batch.atom_cross_att.tokens_to_keys.gather_mask,
                 acat_q_to_atom_gather_idxs=batch.atom_cross_att.queries_to_token_atoms.gather_idxs,
                 acat_q_to_atom_gather_mask=batch.atom_cross_att.queries_to_token_atoms.gather_mask,
-                positions=positions, noise_level_prev=noise_level, noise_level=noise_levels[1 + step_idx],
+                positions=positions, noise_level_prev=noise_levels[step_idx], noise_level=noise_levels[1 + step_idx],
                 USE_ONNX=USE_ONNX,
             )
             # if (step_idx % 200) == 0:
