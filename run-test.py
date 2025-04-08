@@ -51,7 +51,7 @@ from diffusionWorker2.misc import params as diffusion_params
 from diffusionWorker2.diffusion_step_vino import diffusion_vino
 DIFFUSION_ONNX=False
 SAVE_ONNX=False
-UseVino=False
+UseVino=True
 
 _HOME_DIR = pathlib.Path(os.environ.get('HOME'))
 DEFAULT_MODEL_DIR = _HOME_DIR / 'models/model_103275239_1'
@@ -307,7 +307,7 @@ class ModelRunner:
 
         else: # CPU Inference
             if _CPU_AMP_OPT:
-                with torch.amp.autocast(device_type="cpu", dtype=torch.bfloat16):
+                # with torch.amp.autocast(device_type="cpu", dtype=torch.bfloat16):
                     print("Running inference with AMP on CPU...")
                     # self._model=torch.jit.trace(self._model,featurised_example)
                     # result = self._model(featurised_example)

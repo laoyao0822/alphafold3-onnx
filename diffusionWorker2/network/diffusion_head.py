@@ -147,6 +147,11 @@ class DiffusionHead(nn.Module):
 
         self.fourier_embeddings = FourierEmbeddings(dim=256)
 
+        self.gamma_0 = 0.8
+        self.gamma_min = 1.0
+        self.noise_scale = 1.003
+        self.step_scale = 1.5
+
     def _conditioning(
         self,
         token_index, residue_index, asym_id, entity_id, sym_id,
@@ -215,16 +220,24 @@ class DiffusionHead(nn.Module):
         acat_t_to_k_gather_idxs,
         acat_t_to_k_gather_mask,
 
-        positions_noisy: torch.Tensor,
+        positions,
         noise_level_prev,
-        noise_level: torch.Tensor,
+        noise_level,
         # batch: feat_batch.Batch,
         # embeddings: dict[str, torch.Tensor],
         # use_conditioning: bool
     ) -> torch.Tensor:
+        #step1
+        gamma = self.gamma_0 * (noise_level > self.gamma_min)
+        t_hat = noise_level_prev * (1 + gamma)
 
+        noise_scale = self.noise_scale * torch.sqrt(t_hat ** 2 - noise_level_prev ** 2)
+        noise = noise_scale * torch.randn(size=positions.shape, device=noise_scale.device)
+        # noise = noise_scale
+        positions_noisy = positions + noise
 
-
+        noise_level_back=noise_level
+        noise_level=t_hat
         # Get conditioning
         trunk_single_cond, trunk_pair_cond = self._conditioning(
             # batch=batch,
@@ -313,4 +326,13 @@ class DiffusionHead(nn.Module):
         # return (
         #     skip_scaling * positions_noisy + out_scaling * position_update
         # ) * pred_dense_atom_mask[..., None]
-        return positions_denoised
+
+
+
+        #step1
+        grad = (positions_noisy - positions_denoised) / t_hat
+
+        d_t = noise_level_back - t_hat
+        positions_out = positions_noisy + self.step_scale * d_t * grad
+
+        return positions_out

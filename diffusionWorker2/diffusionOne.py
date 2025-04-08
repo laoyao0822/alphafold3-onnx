@@ -66,21 +66,21 @@ class diffusion():
         positions = diffusion_head.random_augmentation(
             positions=positions, mask=pred_dense_atom_mask
         )
-        positions = positions.to(device)
-        gamma = self.gamma_0 * (noise_level > self.gamma_min)
-        t_hat = noise_level_prev * (1 + gamma)
-
-        noise_scale = self.noise_scale * \
-                      torch.sqrt(t_hat ** 2 - noise_level_prev ** 2)
-        noise = noise_scale * torch.randn(size=positions.shape, device=noise_scale.device)
-        # noise = noise_scale
-
-        positions_noisy = positions + noise
-
-        print("positions:",positions_noisy.shape)
-
-        positions_noisy = positions_noisy
-        noise_level = t_hat
+        # positions = positions.to(device)
+        # gamma = self.gamma_0 * (noise_level > self.gamma_min)
+        # t_hat = noise_level_prev * (1 + gamma)
+        #
+        # noise_scale = self.noise_scale * \
+        #               torch.sqrt(t_hat ** 2 - noise_level_prev ** 2)
+        # noise = noise_scale * torch.randn(size=positions.shape, device=noise_scale.device)
+        # # noise = noise_scale
+        #
+        # positions_noisy = positions + noise
+        #
+        # print("positions:",positions_noisy.shape)
+        #
+        # positions_noisy = positions_noisy
+        # noise_level = t_hat
 
         seq_len = torch.export.Dim('seq_len', min=10, max=1600)
         edge_number = torch.export.Dim('edge_number', min=10, max=1500)
@@ -95,7 +95,7 @@ class diffusion():
             'acat_t_to_q_gather_idxs', 'acat_t_to_q_gather_mask',
             'acat_q_to_atom_gather_idxs', 'acat_q_to_atom_gather_mask',
             'acat_t_to_k_gather_idxs', 'acat_t_to_k_gather_mask',
-            'positions_noisy','noise_level'
+            'positions','noise_level_prev','noise_level'
         ]
 
         output_names = ["positions_denoised"]
@@ -136,8 +136,10 @@ class diffusion():
             'acat_t_to_k_gather_idxs': batch.atom_cross_att.tokens_to_keys.gather_idxs,
             'acat_t_to_k_gather_mask': batch.atom_cross_att.tokens_to_keys.gather_mask,
 
-            'positions_noisy': positions_noisy,
+            'positions': positions,
+            'noise_level_prev':noise_level_prev,
             'noise_level': noise_level,
+
         }
         ordered_inputs = tuple(kwarg_inputs[key] for key in ordered_keys)
         opset_version=22
@@ -196,7 +198,9 @@ class diffusion():
                               'ref_atom_name_chars': {0: seq_len},
                               'ref_space_uid': {0: seq_len},
 
-                              'positions_noisy':{0:seq_len},
+                              'positions': {0: seq_len},
+                              # 'positions_noisy':{0:seq_len},
+                              'noise_level_prev':{},
                               'noise_level':{}
                           },
                           training=torch.onnx.TrainingMode.EVAL
@@ -295,21 +299,22 @@ class diffusion():
         positions = diffusion_head.random_augmentation(
             positions=positions, mask=pred_dense_atom_mask
         )
+        #step1
+        # gamma = self.gamma_0 * (noise_level > self.gamma_min)
+        # t_hat = noise_level_prev * (1 + gamma)
+        #
+        # noise_scale = self.noise_scale * \
+        #               torch.sqrt(t_hat ** 2 - noise_level_prev ** 2)
+        # noise = noise_scale * torch.randn(size=positions.shape, device=noise_scale.device)
+        # # noise = noise_scale
+        # positions_noisy = positions + noise
 
-        gamma = self.gamma_0 * (noise_level > self.gamma_min)
-        t_hat = noise_level_prev * (1 + gamma)
-
-        noise_scale = self.noise_scale * \
-                      torch.sqrt(t_hat ** 2 - noise_level_prev ** 2)
-        noise = noise_scale * torch.randn(size=positions.shape, device=noise_scale.device)
-        # noise = noise_scale
-        positions_noisy = positions + noise
         # print("t_hat:",t_hat.shape)
         # print("positions_noisy:",positions_noisy.shape)
-        positions_denoised=None
+        # positions_denoised=None
         # print("that ",t_hat.dtype,"noise_level",noise_level.dtype)
         if not USE_ONNX:
-            positions_denoised = self.diffusion_head(
+            positions_out = self.diffusion_head(
             single=single, pair=pair, target_feat=target_feat,
             token_index=token_index, residue_index=residue_index,
             asym_id=asym_id, entity_id=entity_id, sym_id=sym_id,
@@ -327,8 +332,9 @@ class diffusion():
             acat_q_to_atom_gather_mask=acat_q_to_atom_gather_mask,
             acat_t_to_k_gather_idxs=acat_t_to_k_gather_idxs,
             acat_t_to_k_gather_mask=acat_t_to_k_gather_mask,
-            positions_noisy=positions_noisy,
-            noise_level=t_hat,
+            positions=positions,
+            noise_level_prev=noise_level_prev,
+            noise_level=noise_level,
             # batch=batch,
             # embeddings=embeddings,
             # use_conditioning=True
@@ -374,14 +380,14 @@ class diffusion():
                 np.int64),
                 "acat_t_to_k_gather_mask": acat_t_to_k_gather_mask.numpy().astype(
                 np.bool),
-                'positions_noisy': positions_noisy.numpy(),
-                'noise_level': t_hat.numpy(),
+                # 'positions_noisy': positions_noisy.numpy(),
+                # 'noise_level': t_hat.numpy(),
+                'positions': positions.numpy(),
+                'noise_level_prev': noise_level_prev.numpy(),
+                'noise_level': noise_level.numpy(),
         }
             infer_request = self.compiled_model.create_infer_request()
 
-            input_keys = self.compiled_model.inputs
-            # print(input_keys)
-            output_keys = self.compiled_model.outputs
             idx=0
             # 将数据填充到输入张量
             for value in inputs.values():
@@ -398,7 +404,7 @@ class diffusion():
             # --------------------------- 获取输出 ------------------------------
             # 获取输出张量 (假设第一个输出是 positions_denoised)
             output_tensor = infer_request.get_output_tensor(0)
-            positions_denoised = torch.from_numpy(output_tensor.data)
+            positions_out = torch.from_numpy(output_tensor.data)
 
         # if torch.allclose(positions_denoised,positions_denoised2,1e-4):
         #     print("no difference")
@@ -410,10 +416,11 @@ class diffusion():
         #     print(positions_denoised2)
         #     exit(0)
 
-        grad = (positions_noisy - positions_denoised) / t_hat
-
-        d_t = noise_level - t_hat
-        positions_out = positions_noisy + self.step_scale * d_t * grad
+        #step1
+        # grad = (positions_noisy - positions_denoised) / t_hat
+        #
+        # d_t = noise_level - t_hat
+        # positions_out = positions_noisy + self.step_scale * d_t * grad
         return positions_out
         # return positions_out, noise_level
 
@@ -476,7 +483,7 @@ class diffusion():
             )
             # if (step_idx % 200) == 0:
             # print("noise_level: ", noise_level)
-        # print("conversion cost time :",self.conversion_time)
+        print("conversion cost time :",self.conversion_time)
         return positions
 
 
