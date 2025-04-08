@@ -216,11 +216,15 @@ class DiffusionHead(nn.Module):
         acat_t_to_k_gather_mask,
 
         positions_noisy: torch.Tensor,
+        noise_level_prev,
         noise_level: torch.Tensor,
         # batch: feat_batch.Batch,
         # embeddings: dict[str, torch.Tensor],
         # use_conditioning: bool
     ) -> torch.Tensor:
+
+
+
         # Get conditioning
         trunk_single_cond, trunk_pair_cond = self._conditioning(
             # batch=batch,

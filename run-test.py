@@ -44,18 +44,21 @@ from evoformer.evoformer import EvoFormerOne
 from evoformer.misc import params as evoformer_params
 import time
 
-from diffusionWorker2.diffusionOne import DiffusionOne
+# from diffusionWorker2.diffusionOne import DiffusionOne
 from diffusionWorker2.diffusionOne import diffusion
 
 from diffusionWorker2.misc import params as diffusion_params
+from diffusionWorker2.diffusion_step_vino import diffusion_vino
 DIFFUSION_ONNX=False
 SAVE_ONNX=False
+UseVino=False
+
 _HOME_DIR = pathlib.Path(os.environ.get('HOME'))
 DEFAULT_MODEL_DIR = _HOME_DIR / 'models/model_103275239_1'
 DEFAULT_DB_DIR = _HOME_DIR / 'public_databases'
-ONNX_PATH = '/root/pycharm/diffusion_head_onnx_base2/diffusion_head.onnx'
+ONNX_PATH = '/root/pycharm/diffusion_head_onnx/diffusion_head.onnx'
 # ONNX_PATH='/root/pycharm/diffusion_head_onnx_base_fp16/diffusion_head.onnx'
-OPENVINO_PATH = '/root/pycharm/openvino_model/model.xml'
+OPENVINO_PATH = '/root/pycharm/diffusion_head_openvino/model.xml'
 
 # Input and output paths.
 _JSON_PATH = flags.DEFINE_string(
@@ -225,26 +228,34 @@ class ModelRunner:
         # # sess_options.AddConfigEntry(ort.SessionOptions.kOrtSessionOptionEpContextEnable, "1");
         # session = ort.InferenceSession(ONNX_PATH, sess_options=sess_options,provider_options=['OpenVINO_CPU'])
         # self.diffusion=session
-        if not DIFFUSION_ONNX:
+        if UseVino:
+            self.diffusion=diffusion()
+            self.diffusion.initOpenvinoModel(OPENVINO_PATH)
+            # self.diffusion.initOnnxModel(ONNX_PATH)
+        elif SAVE_ONNX or not DIFFUSION_ONNX:
+            print("select diffusion2")
             self.diffusion=diffusion()
             self.diffusion.diffusion_head.eval()
-        # diffusion_params.import_jax_weights_(self.diffusion,model_dir)
+            # diffusion_params.import_jax_weights_(self.diffusion.apply_step,model_dir)
             self.diffusion.import_diffusion_head_params(model_dir)
+
         #
         # self._model = self._model.to(device=self._device)
         else:
-            self.diffusion=diffusion()
+            pass
+            # self.diffusion=diffusion()
             # self.diffusion.initOnnxModel(ONNX_PATH)
-            self.diffusion.initOpenvinoModel(OPENVINO_PATH)
+            # self.diffusion.initOpenvinoModel(OPENVINO_PATH)
             # self.diffusion.import_diffusion_head_params(model_dir)
 
         # Apply IPEX optimization for CPU if device is CPU
         if _CPU_INFERENCE.value:
             print("mkl",torch.backends.mkl.is_available(),"onednn",torch.backends.mkldnn.is_available())
-            if not SAVE_ONNX and  not DIFFUSION_ONNX:
+            if not SAVE_ONNX and  not DIFFUSION_ONNX and not UseVino:
+                pass
                 import intel_extension_for_pytorch as ipex
-                import openvino as ov
-                print("Applying Intel Extension for PyTorch optimizations...")
+                # import openvino as ov
+                # print("Applying Intel Extension for PyTorch optimizations...")
                 self._model = ipex.optimize(self._model,weights_prepack=False,optimize_lstm=True,auto_kernel_selection=True,dtype=torch.bfloat16)
 
                 self.target_feat = ipex.optimize(self.target_feat,weights_prepack=False,optimize_lstm=True,auto_kernel_selection=True,dtype=torch.bfloat16)
@@ -315,16 +326,13 @@ class ModelRunner:
 
                         acat_q_to_k_gather_idxs=batch.atom_cross_att.queries_to_keys.gather_idxs,
                         acat_q_to_k_gather_mask=batch.atom_cross_att.queries_to_keys.gather_mask,
-
                         acat_t_to_q_gather_idxs=batch.atom_cross_att.tokens_to_queries.gather_idxs,
                         acat_t_to_q_gather_mask=batch.atom_cross_att.tokens_to_queries.gather_mask,
-
                         acat_q_to_atom_gather_idxs=batch.atom_cross_att.queries_to_token_atoms.gather_idxs,
                         acat_q_to_atom_gather_mask=batch.atom_cross_att.queries_to_token_atoms.gather_mask,
 
                         acat_t_to_k_gather_idxs=batch.atom_cross_att.tokens_to_keys.gather_idxs,
                         acat_t_to_k_gather_mask=batch.atom_cross_att.tokens_to_keys.gather_mask,
-
                         ref_ops=batch.ref_structure.positions,
                         ref_mask=batch.ref_structure.mask,
                         ref_element=batch.ref_structure.element,
@@ -344,7 +352,7 @@ class ModelRunner:
                     #                             single=embeddings['single'],pair=embeddings['pair'],target_feat=target_feat,
                     #                             save_path=OPENVINO_PATH)
                     if SAVE_ONNX:
-                        self.diffusion.getOnnxModel(batch=featurised_example,
+                        self.diffusion.getOnnxModel(batch=batch,
                                             single=embeddings['single'], pair=embeddings['pair'],
                                             target_feat=target_feat,
                                             save_path=ONNX_PATH)
@@ -352,51 +360,17 @@ class ModelRunner:
                     for i in range(_NUM_DIFFUSION_SAMPLES.value):
                         # print("diffusion sample %d" % i)
                         time1 = time.time()
-                        # outputs = self.diffusion.run(
-                        #     output_names=output_names,
-                        #     input_feed=inputs
-                        # )
-
-                        # 假设输出名为 "positions"，根据模型实际情况调整
-                        # positions[i] = torch.from_numpy(outputs[0])
-                        # positions[i]=self.diffusion(single=embeddings['single'],pair=embeddings['pair'],target_feat=target_feat,
-                        #             seq_mask=batch.token_features.mask,
-                        #             token_index=batch.token_features.token_index,
-                        #             residue_index=batch.token_features.residue_index,
-                        #             asym_id=batch.token_features.asym_id,
-                        #             entity_id=batch.token_features.entity_id,
-                        #             sym_id=batch.token_features.sym_id,
-                        #
-                        #             pred_dense_atom_mask=batch.predicted_structure_info.atom_mask,
-                        #
-                        #             acat_atoms_to_q_gather_idxs=batch.atom_cross_att.token_atoms_to_queries.gather_idxs,
-                        #             acat_atoms_to_q_gather_mask=batch.atom_cross_att.token_atoms_to_queries.gather_mask,
-                        #
-                        #             acat_q_to_k_gather_idxs=batch.atom_cross_att.queries_to_keys.gather_idxs,
-                        #             acat_q_to_k_gather_mask=batch.atom_cross_att.queries_to_keys.gather_mask,
-                        #
-                        #             acat_t_to_q_gather_idxs=batch.atom_cross_att.tokens_to_queries.gather_idxs,
-                        #             acat_t_to_q_gather_mask=batch.atom_cross_att.tokens_to_queries.gather_mask,
-                        #
-                        #             acat_q_to_atom_gather_idxs=batch.atom_cross_att.queries_to_token_atoms.gather_idxs,
-                        #             acat_q_to_atom_gather_mask=batch.atom_cross_att.queries_to_token_atoms.gather_mask,
-                        #
-                        #             acat_t_to_k_gather_idxs=batch.atom_cross_att.tokens_to_keys.gather_idxs,
-                        #             acat_t_to_k_gather_mask=batch.atom_cross_att.tokens_to_keys.gather_mask,
-                        #
-                        #             ref_ops=batch.ref_structure.positions,
-                        #             ref_mask=batch.ref_structure.mask,
-                        #             ref_element=batch.ref_structure.element,
-                        #             ref_charge=batch.ref_structure.charge,
-                        #             ref_atom_name_chars=batch.ref_structure.atom_name_chars,
-                        #             ref_space_uid=batch.ref_structure.ref_space_uid
-                        #                             )
-
-                        positions[i] = self.diffusion.forward(featurised_example,single=embeddings['single'], pair=embeddings['pair'],
-                                                      target_feat=target_feat,USE_ONNX=DIFFUSION_ONNX
+                        if not UseVino:
+                            positions[i] = self.diffusion.forward(featurised_example,single=embeddings['single'], pair=embeddings['pair'],
+                                                      target_feat=target_feat,USE_ONNX=False
+                                                      )
+                        else:
+                            positions[i] = self.diffusion.forward(featurised_example,single=embeddings['single'], pair=embeddings['pair'],
+                                                      target_feat=target_feat,USE_ONNX=True
                                                       )
                         print("diffusion cost time: ", time.time() - time1)
                 # with torch.amp.autocast(device_type="cpu", dtype=torch.bfloat16):
+                    print(positions[0][0])
                     result=self._model(featurised_example,embeddings,positions)
 
                     # if torch.allclose(result, target_feat, rtol=1e-5):

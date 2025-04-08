@@ -201,6 +201,8 @@ class DiffusionHead(nn.Module):
         embeddings: dict[str, torch.Tensor],
         use_conditioning: bool
     ) -> torch.Tensor:
+
+
         # Get conditioning
         trunk_single_cond, trunk_pair_cond = self._conditioning(
             token_index=token_index, residue_index=residue_index,
