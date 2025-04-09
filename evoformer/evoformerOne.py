@@ -287,14 +287,15 @@ class Evoformer(nn.Module):
 
         t_o_pol_idx, t_o_pol_mask, t_o_lig_masks, t_o_lig_idxs,
         template_aatype, template_atom_positions, template_atom_mask,
-
-        prev: dict[str, torch.Tensor],
+        single,pair,
+        # prev: dict[str, torch.Tensor],
         target_feat: torch.Tensor
-    ) -> dict[str, torch.Tensor]:
+    ) :
         # target_feat_c=target_feat.clone()
 
+        # pair=prev['pair']
+        # single=prev['single']
         num_tokens = token_index.shape[0]
-
         # seq_mask=batch.token_features.mask
         # template_aatype = batch.templates.aatype
         # template_atom_positions = batch.templates.atom_positions
@@ -306,7 +307,7 @@ class Evoformer(nn.Module):
         )
 
         pair_activations += self.prev_embedding(
-            self.prev_embedding_layer_norm(prev['pair']))
+            self.prev_embedding_layer_norm(pair))
 
         # pair_activations = self._relative_encoding(batch, pair_activations)
         pair_activations=self._relative_encoding(token_index=token_index,
@@ -326,7 +327,7 @@ class Evoformer(nn.Module):
 
         single_activations = self.single_activations(target_feat)
         single_activations += self.prev_single_embedding(
-            self.prev_single_embedding_layer_norm(prev['single']))
+            self.prev_single_embedding_layer_norm(single))
 
         #
         pair_activations = self._embed_template_pair(
@@ -359,7 +360,7 @@ class Evoformer(nn.Module):
         }
 
         return output
-
+        # return single,pair
 
 class EvoFormerOne(nn.Module):
 
@@ -378,8 +379,6 @@ class EvoFormerOne(nn.Module):
         self.evoformer = Evoformer()
 
 
-
-
     def forward(self, batch: dict[str, torch.Tensor],target_feat) -> dict[str, torch.Tensor]:
         batch = feat_batch.Batch.from_data_dict(batch)
         num_res = batch.num_res
@@ -396,6 +395,13 @@ class EvoFormerOne(nn.Module):
             ),
             'target_feat': target_feat,  # type: ignore
         }
+        pair= torch.zeros(
+                [num_res, num_res, self.evoformer_pair_channel], device=target_feat.device,
+                dtype=torch.float32,
+            )
+        single=torch.zeros(
+                [num_res, self.evoformer_seq_channel], dtype=torch.float32, device=target_feat.device,
+            )
         # time1=time.time()
         for _ in range(self.num_recycles + 1):
         # for _ in range(0+1):
@@ -405,7 +411,6 @@ class EvoFormerOne(nn.Module):
             # embeddings, _ = hk.fori_loop(0, num_iter, recycle_body, (embeddings, key))
             embeddings = self.evoformer(
                 # batch=batch,
-
                 rows=batch.msa.rows,
                 mask = batch.msa.mask,
                 deletion_matrix = batch.msa.deletion_matrix,
@@ -424,9 +429,16 @@ class EvoFormerOne(nn.Module):
                 template_aatype = batch.templates.aatype,
                 template_atom_positions = batch.templates.atom_positions,
                 template_atom_mask = batch.templates.atom_mask,
-                prev=embeddings,
+                # prev=embeddings,
+                single=embeddings['single'],pair=embeddings['pair'],
                 target_feat=target_feat
             )
         # print("dtype",c_pair.dtype,c_single.dtype)
         # print("shape",c_pair.shape,c_single.shape)
-        return embeddings
+        # return embeddings
+        output = {
+            'single': single,
+            'pair': pair,
+            'target_feat': target_feat,
+        }
+        return output
