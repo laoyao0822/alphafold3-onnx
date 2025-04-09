@@ -21,7 +21,7 @@ from evoformer.network.layer_norm import LayerNorm
 
 class PairformerBlock(nn.Module):
     """Implements Algorithm 17 [Line2-Line8] in AF3
-    Ref to: openfold/model/evoformer.py and protenix/model/modules/pairformer.py
+    Ref to: openfold/model/evoformerOne.py and protenix/model/modules/pairformer.py
     """
 
     def __init__(

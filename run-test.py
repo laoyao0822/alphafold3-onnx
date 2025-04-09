@@ -40,7 +40,7 @@ from target_feat.TargetFeat import  TargetFeat
 from torchfold3.config import *
 from torchfold3.misc import feat_batch
 from target_feat.misc import params as target_feat_params
-from evoformer.evoformer import EvoFormerOne
+from evoformer.evoformerOne import EvoFormerOne
 from evoformer.misc import params as evoformer_params
 import time
 

@@ -65,21 +65,41 @@ class Evoformer(nn.Module):
         self.trunk_pairformer = nn.ModuleList(
             [PairformerBlock(with_single=True) for _ in range(self.pairformer_num_layer)])
 
+    # def _relative_encoding(
+    #     self, batch: feat_batch.Batch, pair_activations: torch.Tensor
+    # ) -> torch.Tensor:
+    #     max_relative_idx = 32
+    #     max_relative_chain = 2
+    #
+    #     rel_feat = featurization.create_relative_encoding(
+    #         batch.token_features,
+    #         max_relative_idx,
+    #         max_relative_chain,
+    #     ).to(dtype=pair_activations.dtype)
+    #
+    #     pair_activations += self.position_activations(rel_feat)
+    #     return pair_activations
     def _relative_encoding(
-        self, batch: feat_batch.Batch, pair_activations: torch.Tensor
+        self, token_index,residue_index,asym_id,entity_id,sym_id,
+            pair_activations: torch.Tensor
     ) -> torch.Tensor:
-        max_relative_idx = 32
-        max_relative_chain = 2
+        # max_relative_idx = 32
+        # max_relative_chain = 2
 
-        rel_feat = featurization.create_relative_encoding(
-            batch.token_features,
-            max_relative_idx,
-            max_relative_chain,
+        rel_feat = featurization.create_relative_encodingV2(
+            token_index=token_index,
+            residue_index=residue_index,
+            asym_id=asym_id,
+            entity_id=entity_id,
+            sym_id=sym_id,
+            # max_relative_idx,
+            # max_relative_chain,
+            max_relative_idx=32,
+            max_relative_chain=2
         ).to(dtype=pair_activations.dtype)
 
         pair_activations += self.position_activations(rel_feat)
         return pair_activations
-
     # def _seq_pair_embedding(
     #     self, token_features: features.TokenFeatures, target_feat: torch.Tensor
     # ) -> tuple[torch.Tensor, torch.Tensor]:
@@ -249,19 +269,19 @@ class Evoformer(nn.Module):
     def forward(
         self,
         batch,
+        token_index, residue_index, asym_id, entity_id, sym_id,
+        t_o_pol_idx, t_o_pol_mask, t_o_lig_masks, t_o_lig_idxs,
+
         prev: dict[str, torch.Tensor],
         target_feat: torch.Tensor
     ) -> dict[str, torch.Tensor]:
 
-        token_index=batch.token_features.token_index
+
         num_tokens = token_index.shape[0]
 
         seq_mask=batch.token_features.mask
 
-        t_o_pol_idx=batch.polymer_ligand_bond_info.tokens_to_polymer_ligand_bonds.gather_idxs
-        t_o_pol_mask=batch.polymer_ligand_bond_info.tokens_to_polymer_ligand_bonds.gather_mask
-        t_o_lig_idxs=batch.ligand_ligand_bond_info.tokens_to_ligand_ligand_bonds.gather_idxs
-        t_o_lig_masks=batch.ligand_ligand_bond_info.tokens_to_ligand_ligand_bonds.gather_mask
+
 
         pair_activations, pair_mask = self._seq_pair_embedding(
             seq_mask, target_feat
@@ -270,8 +290,13 @@ class Evoformer(nn.Module):
         pair_activations += self.prev_embedding(
             self.prev_embedding_layer_norm(prev['pair']))
 
-        pair_activations = self._relative_encoding(batch, pair_activations)
-
+        # pair_activations = self._relative_encoding(batch, pair_activations)
+        pair_activations=self._relative_encoding(token_index=token_index,
+                                                 residue_index=residue_index,
+                                                 asym_id=asym_id,
+                                                 entity_id=entity_id,
+                                                 sym_id=sym_id,
+                                                 pair_activations=pair_activations)
         # pair_activations = self._embed_bonds(
         #     batch=batch, pair_activations=pair_activations
         # )
@@ -365,6 +390,17 @@ class EvoFormerOne(nn.Module):
             # embeddings, _ = hk.fori_loop(0, num_iter, recycle_body, (embeddings, key))
             embeddings = self.evoformer(
                 batch=batch,
+                token_index=batch.token_features.token_index,
+                residue_index = batch.token_features.residue_index,
+                asym_id = batch.token_features.asym_id,
+                entity_id = batch.token_features.entity_id,
+                sym_id = batch.token_features.sym_id,
+
+                t_o_pol_idx=batch.polymer_ligand_bond_info.tokens_to_polymer_ligand_bonds.gather_idxs,
+                t_o_pol_mask = batch.polymer_ligand_bond_info.tokens_to_polymer_ligand_bonds.gather_mask,
+                t_o_lig_idxs = batch.ligand_ligand_bond_info.tokens_to_ligand_ligand_bonds.gather_idxs,
+                t_o_lig_masks = batch.ligand_ligand_bond_info.tokens_to_ligand_ligand_bonds.gather_mask,
+
                 prev=embeddings,
                 target_feat=target_feat
             )
