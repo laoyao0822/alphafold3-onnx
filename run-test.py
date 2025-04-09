@@ -340,9 +340,15 @@ class ModelRunner:
                         ref_atom_name_chars=batch.ref_structure.atom_name_chars,
                         ref_space_uid=batch.ref_structure.ref_space_uid
                     )
+                    target_feat_c=target_feat.clone()
                     print("create target feat cost time %.2f seconds"% (time.time()-time1))
                     time1=time.time()
                     embeddings=self.evoformer(featurised_example,target_feat=target_feat)
+                    if torch.allclose(target_feat, target_feat_c, 1e-5):
+                        print("target feat not change--------")
+                    else:
+                        print("target feat change! ")
+                    target_feat=target_feat_c
                     print("Evoformer took %.2f seconds" % (time.time()-time1))
                     pred_dense_atom_mask = batch.predicted_structure_info.atom_mask
 

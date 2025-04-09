@@ -278,23 +278,27 @@ class Evoformer(nn.Module):
 
     def forward(
         self,
-        batch,
+        # batch,
         rows, mask, deletion_matrix,
 
         token_index, residue_index, asym_id, entity_id, sym_id,
+
+        seq_mask,
+
         t_o_pol_idx, t_o_pol_mask, t_o_lig_masks, t_o_lig_idxs,
+        template_aatype, template_atom_positions, template_atom_mask,
 
         prev: dict[str, torch.Tensor],
         target_feat: torch.Tensor
     ) -> dict[str, torch.Tensor]:
-
+        # target_feat_c=target_feat.clone()
 
         num_tokens = token_index.shape[0]
 
-        seq_mask=batch.token_features.mask
-        template_aatype = batch.templates.aatype
-        template_atom_positions = batch.templates.atom_positions
-        template_atom_mask = batch.templates.atom_mask
+        # seq_mask=batch.token_features.mask
+        # template_aatype = batch.templates.aatype
+        # template_atom_positions = batch.templates.atom_positions
+        # template_atom_mask = batch.templates.atom_mask
 
 
         pair_activations, pair_mask = self._seq_pair_embedding(
@@ -344,7 +348,9 @@ class Evoformer(nn.Module):
 
         for pairformer_b in self.trunk_pairformer:
             pair_activations, single_activations = pairformer_b(
-                pair_activations, pair_mask, single_activations, batch.token_features.mask)
+                pair_activations, pair_mask, single_activations, seq_mask)
+        # if torch.allclose(target_feat,target_feat_c,1e-5):
+        #     print("target feat  not change")
 
         output = {
             'single': single_activations,
@@ -398,7 +404,7 @@ class EvoFormerOne(nn.Module):
             # num_iter = self.config.num_recycles + 1
             # embeddings, _ = hk.fori_loop(0, num_iter, recycle_body, (embeddings, key))
             embeddings = self.evoformer(
-                batch=batch,
+                # batch=batch,
 
                 rows=batch.msa.rows,
                 mask = batch.msa.mask,
@@ -409,12 +415,15 @@ class EvoFormerOne(nn.Module):
                 asym_id = batch.token_features.asym_id,
                 entity_id = batch.token_features.entity_id,
                 sym_id = batch.token_features.sym_id,
+                seq_mask=batch.token_features.mask,
 
                 t_o_pol_idx=batch.polymer_ligand_bond_info.tokens_to_polymer_ligand_bonds.gather_idxs,
                 t_o_pol_mask = batch.polymer_ligand_bond_info.tokens_to_polymer_ligand_bonds.gather_mask,
                 t_o_lig_idxs = batch.ligand_ligand_bond_info.tokens_to_ligand_ligand_bonds.gather_idxs,
                 t_o_lig_masks = batch.ligand_ligand_bond_info.tokens_to_ligand_ligand_bonds.gather_mask,
-
+                template_aatype = batch.templates.aatype,
+                template_atom_positions = batch.templates.atom_positions,
+                template_atom_mask = batch.templates.atom_mask,
                 prev=embeddings,
                 target_feat=target_feat
             )
