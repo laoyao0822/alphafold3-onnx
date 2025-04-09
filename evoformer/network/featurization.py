@@ -64,13 +64,13 @@ def gumbel_argsort_sample_idx(
     return torch.argsort(logits + z, dim=-1, descending=True)
 
 
-def create_msa_feat(msa: features.MSA) -> torch.Tensor:
+def create_msa_feat(rows,deletion_matrix) -> torch.Tensor:
     """Create and concatenate MSA features."""
     msa_1hot = torch.nn.functional.one_hot(
-        msa.rows.to(
+        rows.to(
             dtype=torch.int64), residue_names.POLYMER_TYPES_NUM_WITH_UNKNOWN_AND_GAP + 1
     )
-    deletion_matrix = msa.deletion_matrix
+    deletion_matrix = deletion_matrix
     has_deletion = torch.clip(deletion_matrix, 0.0, 1.0)[..., None]
     deletion_value = (torch.arctan(deletion_matrix / 3.0) * (2.0 / torch.pi))[
         ..., None
@@ -282,3 +282,18 @@ def shuffle_msa(
     index_order = gumbel_argsort_sample_idx(logits)
 
     return msa.index_msa_rows(index_order)
+def shuffle_msa_runcate(
+    rows,mask,deletion_matrix,num_msa: int
+) :
+    """Shuffle MSA randomly, return batch with shuffled MSA.
+
+    Returns:
+        rows,mask,deletion_matrix
+      Protein with sampled msa.
+    """
+    # Sample uniformly among sequences with at least one non-masked position.
+    logits = (torch.clip(torch.sum(mask, dim=-1), 0.0, 1.0) - 1.0) * 1e6
+    index_order = torch.argsort(logits + gumbel_noise(logits.shape, device=logits.device), dim=-1, descending=True)
+    indices = torch.arange(num_msa, device=rows.device, dtype=torch.int64)
+    # rows, mask, deletion_matrix= rows[index_order, :],mask[index_order, :],deletion_matrix[index_order, :]
+    return rows[index_order, :][indices, :],mask[index_order, :][indices, :],deletion_matrix[index_order, :][indices, :]

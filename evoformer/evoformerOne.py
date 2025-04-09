@@ -242,19 +242,25 @@ class Evoformer(nn.Module):
         return pair_activations + template_act
 
     def _embed_process_msa(
-        self, msa_batch: features.MSA,
+        self,
+        # msa_batch: features.MSA,
+        rows, mask, deletion_matrix,
         pair_activations: torch.Tensor,
         pair_mask: torch.Tensor,
         target_feat: torch.Tensor
     ) -> torch.Tensor:
         """Processes MSA and returns updated pair activations."""
         dtype = pair_activations.dtype
+        # rows=msa_batch.rows
+        # mask=msa_batch.mask
+        # deletion_matrix=msa_batch.deletion_matrix
 
-        msa_batch = featurization.shuffle_msa(msa_batch)
-        msa_batch = featurization.truncate_msa_batch(msa_batch, self.num_msa)
+        # msa_batch = featurization.shuffle_msa(msa_batch)
+        # msa_batch = featurization.truncate_msa_batch(msa_batch, self.num_msa)
+        rows, mask, deletion_matrix= featurization.shuffle_msa_runcate(rows, mask, deletion_matrix,num_msa=self.num_msa)
 
-        msa_mask = msa_batch.mask.to(dtype=dtype)
-        msa_feat = featurization.create_msa_feat(msa_batch).to(dtype=dtype)
+        msa_mask = mask.to(dtype=dtype)
+        msa_feat = featurization.create_msa_feat(rows,deletion_matrix).to(dtype=dtype)
 
         msa_activations = self.msa_activations(msa_feat)
         msa_activations += self.extra_msa_target_feat(target_feat)[None]
@@ -273,6 +279,8 @@ class Evoformer(nn.Module):
     def forward(
         self,
         batch,
+        rows, mask, deletion_matrix,
+
         token_index, residue_index, asym_id, entity_id, sym_id,
         t_o_pol_idx, t_o_pol_mask, t_o_lig_masks, t_o_lig_idxs,
 
@@ -325,7 +333,8 @@ class Evoformer(nn.Module):
         )
 
         pair_activations = self._embed_process_msa(
-            msa_batch=batch.msa,
+            # msa_batch=batch.msa,
+            rows, mask, deletion_matrix,
             pair_activations=pair_activations,
             pair_mask=pair_mask,
             target_feat=target_feat,
@@ -354,18 +363,11 @@ class EvoFormerOne(nn.Module):
         self.num_recycles = num_recycles
         self.num_samples = num_samples
 
-        if dist.is_initialized():
-            self.world_size = dist.get_world_size()
-            self.rank = dist.get_rank()
-        else:
-            self.world_size = 1
-            self.rank = 0
 
 
         self.evoformer_pair_channel = 128
         self.evoformer_seq_channel = 384
 
-        # self.evoformer_conditioning = atom_cross_attention.AtomCrossAttEncoder()
 
         self.evoformer = Evoformer()
 
@@ -397,6 +399,11 @@ class EvoFormerOne(nn.Module):
             # embeddings, _ = hk.fori_loop(0, num_iter, recycle_body, (embeddings, key))
             embeddings = self.evoformer(
                 batch=batch,
+
+                rows=batch.msa.rows,
+                mask = batch.msa.mask,
+                deletion_matrix = batch.msa.deletion_matrix,
+
                 token_index=batch.token_features.token_index,
                 residue_index = batch.token_features.residue_index,
                 asym_id = batch.token_features.asym_id,
