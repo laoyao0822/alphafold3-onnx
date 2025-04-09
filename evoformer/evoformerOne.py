@@ -353,14 +353,14 @@ class Evoformer(nn.Module):
         # if torch.allclose(target_feat,target_feat_c,1e-5):
         #     print("target feat  not change")
 
-        output = {
-            'single': single_activations,
-            'pair': pair_activations,
-            'target_feat': target_feat,
-        }
+        # output = {
+        #     'single': single_activations,
+        #     'pair': pair_activations,
+        #     'target_feat': target_feat,
+        # }
 
-        return output
-        # return single,pair
+        # return output
+        return single_activations,pair_activations
 
 class EvoFormerOne(nn.Module):
 
@@ -409,7 +409,7 @@ class EvoFormerOne(nn.Module):
             # Number of recycles is number of additional forward trunk passes.
             # num_iter = self.config.num_recycles + 1
             # embeddings, _ = hk.fori_loop(0, num_iter, recycle_body, (embeddings, key))
-            embeddings = self.evoformer(
+            single,pair = self.evoformer(
                 # batch=batch,
                 rows=batch.msa.rows,
                 mask = batch.msa.mask,
@@ -430,7 +430,8 @@ class EvoFormerOne(nn.Module):
                 template_atom_positions = batch.templates.atom_positions,
                 template_atom_mask = batch.templates.atom_mask,
                 # prev=embeddings,
-                single=embeddings['single'],pair=embeddings['pair'],
+                single=single,pair=pair,
+                # single=embeddings['single'],pair=embeddings['pair'],
                 target_feat=target_feat
             )
         # print("dtype",c_pair.dtype,c_single.dtype)
