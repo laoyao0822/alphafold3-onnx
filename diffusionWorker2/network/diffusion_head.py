@@ -60,7 +60,31 @@ def random_rotation(device, dtype):
     e2 = torch.cross(e0, e1, dim=-1)
     return torch.stack([e0, e1, e2])
 
+# def random_rotation(
+#     # v0,  v1,
+#     eps: float = 1e-10
+# ) -> torch.Tensor:
+#     v0, v1 = torch.randn(size=(2, 3))
+#     # 手动实现Gram-Schmidt正交化
+#     norm_v0 = torch.sqrt(torch.sum(v0**2, dim=-1, keepdim=True))+ eps
+#     e0 = v0 / norm_v0
+#
+#     dot = torch.sum(v1 * e0, dim=-1, keepdim=True)
+#     v1_ortho = v1 - e0 * dot
+#
+#     norm_v1 = torch.sqrt(torch.sum(v1_ortho**2, dim=-1, keepdim=True)) + eps
+#     e1 = v1_ortho / norm_v1
+#     # 手动计算叉乘
+#     e2_x = e0[..., 1] * e1[..., 2] - e0[..., 2] * e1[..., 1]
+#     e2_y = e0[..., 2] * e1[..., 0] - e0[..., 0] * e1[..., 2]
+#     e2_z = e0[..., 0] * e1[..., 1] - e0[..., 1] * e1[..., 0]
+#     e2 = torch.stack([e2_x, e2_y, e2_z], dim=-1)
+#
+#     return torch.stack([e0, e1, e2], dim=-2)
 
+
+
+# @torch.jit.trace
 def random_augmentation(
     positions: torch.Tensor,
     mask: torch.Tensor,
@@ -79,17 +103,20 @@ def random_augmentation(
         mask[..., None], positions, dim=(-2, -3), keepdim=True, eps=1e-6
     )
     rot = random_rotation(device=positions.device, dtype=positions.dtype)
+    # rot=random_rotation()
     translation = torch.randn(
         size=(3,), dtype=positions.dtype, device=positions.device)
 
-    augmented_positions = (
-        torch.einsum(
-            '...i,ij->...j',
-            positions - center,
-            rot,
-        )
-        + translation
-    )
+    # augmented_positions = (
+    #     # torch.einsum(
+    #     #     '...i,ij->...j',
+    #     #     positions - center,
+    #     #     rot,
+    #     # )
+    #     torch.matmul(positions-center, rot)
+    #     + translation
+    # )
+    augmented_positions=torch.matmul(positions-center, rot)+ translation
     return augmented_positions * mask[..., None]
 
 
@@ -227,6 +254,13 @@ class DiffusionHead(nn.Module):
         # embeddings: dict[str, torch.Tensor],
         # use_conditioning: bool
     ) -> torch.Tensor:
+        #step2
+        # torch.save({"positions": positions,"mask":pred_dense_atom_mask},"/root/pycharm/random_aug.pt")
+        positions = random_augmentation(
+            positions=positions, mask=pred_dense_atom_mask
+        )
+        # exit(0)
+
         #step1
         gamma = self.gamma_0 * (noise_level > self.gamma_min)
         t_hat = noise_level_prev * (1 + gamma)

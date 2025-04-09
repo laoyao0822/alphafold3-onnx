@@ -63,9 +63,9 @@ class diffusion():
         noise_level = noise_levels[1 + 1]
 
 
-        positions = diffusion_head.random_augmentation(
-            positions=positions, mask=pred_dense_atom_mask
-        )
+        # positions = diffusion_head.random_augmentation(
+        #     positions=positions, mask=pred_dense_atom_mask
+        # )
         # positions = positions.to(device)
         # gamma = self.gamma_0 * (noise_level > self.gamma_min)
         # t_hat = noise_level_prev * (1 + gamma)
@@ -296,9 +296,9 @@ class diffusion():
     ):
         # pred_dense_atom_mask = batch.predicted_structure_info.atom_mask
 
-        positions = diffusion_head.random_augmentation(
-            positions=positions, mask=pred_dense_atom_mask
-        )
+        # positions = diffusion_head.random_augmentation(
+        #     positions=positions, mask=pred_dense_atom_mask
+        # )
         #step1
         # gamma = self.gamma_0 * (noise_level > self.gamma_min)
         # t_hat = noise_level_prev * (1 + gamma)

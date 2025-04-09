@@ -300,7 +300,7 @@ class ModelRunner:
 
         if _CPU_INFERENCE.value==False:
             if True:
-                with torch.amp.autocast(device_type="cuda", dtype=torch.bfloat16):
+                # with torch.amp.autocast(device_type="cuda", dtype=torch.bfloat16):
                     print("Running inference with AMP on GPU...")
                     result = self._model(featurised_example)
                     result['__identifier__'] = self._model.__identifier__.numpy()

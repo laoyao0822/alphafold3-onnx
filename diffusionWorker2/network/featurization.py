@@ -90,40 +90,6 @@ def truncate_msa_batch(msa: features.MSA, num_msa: int) -> features.MSA:
     return msa.index_msa_rows(indices)
 
 
-def create_target_feat(
-    batch: feat_batch.Batch,
-    append_per_atom_features: bool,
-) -> torch.Tensor:
-    """Make target feat."""
-    token_features = batch.token_features
-    target_features = []
-
-    target_features.append(
-        torch.nn.functional.one_hot(
-            token_features.aatype.to(dtype=torch.int64),
-            residue_names.POLYMER_TYPES_NUM_WITH_UNKNOWN_AND_GAP,
-        )
-    )
-    target_features.append(batch.msa.profile)
-    target_features.append(batch.msa.deletion_mean[..., None])
-
-    # Reference structure features
-    if append_per_atom_features:
-        ref_mask = batch.ref_structure.mask
-        element_feat = torch.nn.functional.one_hot(
-            batch.ref_structure.element, 128)
-        element_feat = utils.mask_mean(
-            mask=ref_mask[..., None], value=element_feat, axis=-2, eps=1e-6
-        )
-        target_features.append(element_feat)
-        pos_feat = batch.ref_structure.positions
-        pos_feat = pos_feat.reshape([pos_feat.shape[0], -1])
-        target_features.append(pos_feat)
-        target_features.append(ref_mask)
-
-    return torch.concatenate(target_features, dim=-1)
-
-
 def create_relative_encoding(
     # seq_features: features.TokenFeatures,
     token_index,residue_index,asym_id,entity_id,sym_id,
