@@ -278,8 +278,11 @@ class Evoformer(nn.Module):
 
     def forward(
         self,
+        single, pair,
+            # prev: dict[str, torch.Tensor],
+        target_feat: torch.Tensor,
         # batch,
-        rows, mask, deletion_matrix,
+        msa, msa_mask, deletion_matrix,
 
         token_index, residue_index, asym_id, entity_id, sym_id,
 
@@ -287,20 +290,13 @@ class Evoformer(nn.Module):
 
         t_o_pol_idx, t_o_pol_mask, t_o_lig_masks, t_o_lig_idxs,
         template_aatype, template_atom_positions, template_atom_mask,
-        single,pair,
-        # prev: dict[str, torch.Tensor],
-        target_feat: torch.Tensor
+
     ) :
         # target_feat_c=target_feat.clone()
 
         # pair=prev['pair']
         # single=prev['single']
         num_tokens = token_index.shape[0]
-        # seq_mask=batch.token_features.mask
-        # template_aatype = batch.templates.aatype
-        # template_atom_positions = batch.templates.atom_positions
-        # template_atom_mask = batch.templates.atom_mask
-
 
         pair_activations, pair_mask = self._seq_pair_embedding(
             seq_mask, target_feat
@@ -339,7 +335,7 @@ class Evoformer(nn.Module):
 
         pair_activations = self._embed_process_msa(
             # msa_batch=batch.msa,
-            rows, mask, deletion_matrix,
+            msa, msa_mask, deletion_matrix,
             pair_activations=pair_activations,
             pair_mask=pair_mask,
             target_feat=target_feat,
@@ -362,7 +358,7 @@ class Evoformer(nn.Module):
         # return output
         return single_activations,pair_activations
 
-class EvoFormerOne(nn.Module):
+class EvoFormerOne():
 
     def __init__(self, num_recycles: int = 10, num_samples: int = 5, diffusion_steps: int = 200):
         super(EvoFormerOne, self).__init__()
@@ -370,14 +366,102 @@ class EvoFormerOne(nn.Module):
         self.num_recycles = num_recycles
         self.num_samples = num_samples
 
-
-
         self.evoformer_pair_channel = 128
         self.evoformer_seq_channel = 384
 
-
         self.evoformer = Evoformer()
 
+    def getOnnxModel(self, batch, target_feat, save_path, ):
+        batch = feat_batch.Batch.from_data_dict(batch)
+        num_res = batch.num_res
+        pair = torch.zeros(
+            [num_res, num_res, self.evoformer_pair_channel], device=target_feat.device,
+            dtype=torch.float32,
+        )
+        single = torch.zeros(
+            [num_res, self.evoformer_seq_channel], dtype=torch.float32, device=target_feat.device,
+        )
+
+        seq_len = torch.export.Dim('seq_len', min=10, max=1600)
+        ten_length = torch.export.Dim('ten_length', min=100, max=16000)
+
+        ten_length = 10 * seq_len
+
+        edge_number = torch.export.Dim('edge_number', min=10, max=1500)
+        output_names = ["single", "pair"]
+        ordered_keys=['single', 'pair', 'target_feat',
+                        'msa', 'msa_mask', 'deletion_matrix',
+                        'token_index', 'residue_index', 'asym_id', 'entity_id', 'sym_id',
+                        'seq_mask',
+                        't_o_pol_idx', 't_o_pol_mask', 't_o_lig_idxs', 't_o_lig_masks',
+                        'template_aatype', 'template_atom_positions', 'template_atom_mask',
+                        ]
+        kwarg_inputs = {
+            'single': single,
+            'pair': pair,
+            'target_feat': target_feat,
+            'msa': batch.msa.rows,
+            'msa_mask': batch.msa.mask,
+            'deletion_matrix': batch.msa.deletion_matrix,
+            'token_index': batch.token_features.token_index,
+            'residue_index': batch.token_features.residue_index,
+            'asym_id': batch.token_features.asym_id,
+            'entity_id': batch.token_features.entity_id,
+            'sym_id': batch.token_features.sym_id,
+
+            'seq_mask': batch.token_features.mask,
+
+            't_o_pol_idx': batch.polymer_ligand_bond_info.tokens_to_polymer_ligand_bonds.gather_idxs,
+            't_o_pol_mask': batch.polymer_ligand_bond_info.tokens_to_polymer_ligand_bonds.gather_mask,
+            't_o_lig_idxs': batch.ligand_ligand_bond_info.tokens_to_ligand_ligand_bonds.gather_idxs,
+            't_o_lig_masks': batch.ligand_ligand_bond_info.tokens_to_ligand_ligand_bonds.gather_mask,
+            'template_aatype': batch.templates.aatype,
+            'template_atom_positions': batch.templates.atom_positions,
+            'template_atom_mask': batch.templates.atom_mask,
+        }
+        ordered_inputs = tuple(kwarg_inputs[key] for key in ordered_keys)
+
+        opset_version=22
+        print("opset: ", opset_version)
+        print("start to save")
+
+        torch.onnx.export(self.evoformer,
+                      ordered_inputs, f=save_path, dynamo=True,
+                      input_names=ordered_keys,
+                      output_names=output_names,
+
+                      optimize=True,
+                      opset_version=opset_version,
+                      export_params=True,
+
+                      dynamic_shapes={
+                          'single': {0: seq_len},
+                          'pair': {0: seq_len, 1: seq_len},
+                          'target_feat': {0: seq_len},
+
+                          'msa': {1: seq_len},
+                          'msa_mask': {1: seq_len},
+                          'deletion_matrix': {1: seq_len},
+
+                          'token_index': {0: seq_len},
+                          'residue_index': {0: seq_len},
+                          'asym_id': {0: seq_len},
+                          'entity_id': {0: seq_len},
+                          'sym_id': {0: seq_len},
+
+                          'seq_mask': {0: seq_len},
+
+                          't_o_pol_idx': {0: seq_len},
+                          't_o_pol_mask': {0: seq_len},
+                          't_o_lig_idxs': {0: ten_length},
+                          't_o_lig_masks': {0: ten_length},
+                          # 模板相关
+                          'template_aatype': {1: seq_len},
+                          'template_atom_positions': {1: seq_len},
+                          'template_atom_mask': {1: seq_len},
+                      }
+                          )
+        exit(0)
 
     def forward(self, batch: dict[str, torch.Tensor],target_feat) -> dict[str, torch.Tensor]:
         batch = feat_batch.Batch.from_data_dict(batch)
@@ -385,16 +469,6 @@ class EvoFormerOne(nn.Module):
         #target_feat torch.Size([37, 447])
         
         # target_feat1=self.create_target_feat_embedding(batch)
-        embeddings = {
-            'pair': torch.zeros(
-                [num_res, num_res, self.evoformer_pair_channel], device=target_feat.device,
-                dtype=torch.float32,
-            ),
-            'single': torch.zeros(
-                [num_res, self.evoformer_seq_channel], dtype=torch.float32, device=target_feat.device,
-            ),
-            'target_feat': target_feat,  # type: ignore
-        }
         pair= torch.zeros(
                 [num_res, num_res, self.evoformer_pair_channel], device=target_feat.device,
                 dtype=torch.float32,
@@ -410,9 +484,12 @@ class EvoFormerOne(nn.Module):
             # num_iter = self.config.num_recycles + 1
             # embeddings, _ = hk.fori_loop(0, num_iter, recycle_body, (embeddings, key))
             single,pair = self.evoformer(
+                single=single, pair=pair,
+                # single=embeddings['single'],pair=embeddings['pair'],
+                target_feat=target_feat,
                 # batch=batch,
-                rows=batch.msa.rows,
-                mask = batch.msa.mask,
+                msa=batch.msa.rows,
+                msa_mask = batch.msa.mask,
                 deletion_matrix = batch.msa.deletion_matrix,
 
                 token_index=batch.token_features.token_index,
@@ -430,9 +507,7 @@ class EvoFormerOne(nn.Module):
                 template_atom_positions = batch.templates.atom_positions,
                 template_atom_mask = batch.templates.atom_mask,
                 # prev=embeddings,
-                single=single,pair=pair,
-                # single=embeddings['single'],pair=embeddings['pair'],
-                target_feat=target_feat
+
             )
         # print("dtype",c_pair.dtype,c_single.dtype)
         # print("shape",c_pair.shape,c_single.shape)

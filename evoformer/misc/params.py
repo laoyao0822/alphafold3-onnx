@@ -669,8 +669,21 @@ def get_translation_dict(model):
     translations = {
         "evoformer": EvoformerParams(model.evoformer),
     }
-
     return translations
+def get_evoformer_translation_dict(model):
+    translations = {
+        "evoformer": EvoformerParams(model),
+    }
+    return translations
+def import_evoformer_jax_weights_(model, model_path: pathlib.Path):
+    params = get_model_haiku_params_to_torch(model_path / "af3.bin")
+
+    translations = get_evoformer_translation_dict(model)
+
+    flat = _process_translations_dict(translations, _key_prefix="diffuser/")
+
+    assign(flat, params)
+    model.__identifier__ = params['__meta__/__identifier__']
 
 # 最激动人心的一集
 def import_jax_weights_(model, model_path: pathlib.Path):
