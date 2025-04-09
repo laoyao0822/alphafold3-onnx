@@ -216,13 +216,15 @@ class Evoformer(nn.Module):
 
     def _embed_template_pair(
         self,
-        batch: feat_batch.Batch,
+        # batch: feat_batch.Batch,
+        asym_id,
+        template_aatype, template_atom_positions, template_atom_mask,
         pair_activations: torch.Tensor,
         pair_mask: torch.Tensor
     ) -> torch.Tensor:
         """Embeds Templates and merges into pair activations."""
-        templates = batch.templates
-        asym_id = batch.token_features.asym_id
+        # templates = batch.templates
+        # asym_id = batch.token_features.asym_id
 
         dtype = pair_activations.dtype
         multichain_mask = (asym_id[:, None] ==
@@ -230,7 +232,9 @@ class Evoformer(nn.Module):
 
         template_act = self.template_embedding(
             query_embedding=pair_activations,
-            templates=templates,
+            # templates=templates,
+            template_aatype=template_aatype, template_atom_positions=template_atom_positions,
+            template_atom_mask=template_atom_mask,
             multichain_mask_2d=multichain_mask,
             padding_mask_2d=pair_mask
         )
@@ -280,7 +284,9 @@ class Evoformer(nn.Module):
         num_tokens = token_index.shape[0]
 
         seq_mask=batch.token_features.mask
-
+        template_aatype = batch.templates.aatype
+        template_atom_positions = batch.templates.atom_positions
+        template_atom_mask = batch.templates.atom_mask
 
 
         pair_activations, pair_mask = self._seq_pair_embedding(
@@ -312,7 +318,8 @@ class Evoformer(nn.Module):
 
         #
         pair_activations = self._embed_template_pair(
-            batch=batch,
+            asym_id=asym_id, template_aatype=template_aatype,
+            template_atom_positions=template_atom_positions, template_atom_mask=template_atom_mask,
             pair_activations=pair_activations,
             pair_mask=pair_mask,
         )
