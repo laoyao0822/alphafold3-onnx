@@ -22,7 +22,7 @@ def gumbel_noise(
     shape: Sequence[int],
     device: torch.device,
     eps=1e-6,
-    generator=None,
+    # generator=None,
 ) -> torch.Tensor:
     """Generate Gumbel Noise of given Shape.
 
@@ -35,33 +35,34 @@ def gumbel_noise(
         Gumbel noise of given shape.
     """
     uniform_noise = torch.rand(
-        shape, dtype=torch.float32, device=device, generator=generator
+        shape, dtype=torch.float32, device=device
     )
+    print('uniform_noise', uniform_noise)
     gumbel = -torch.log(-torch.log(uniform_noise + eps) + eps)
     return gumbel
 
 
-def gumbel_argsort_sample_idx(
-    logits: torch.Tensor,
-    generator: Optional[torch.Generator] = None
-) -> torch.Tensor:
-    """Samples with replacement from a distribution given by 'logits'.
-
-    This uses Gumbel trick to implement the sampling an efficient manner. For a
-    distribution over k items this samples k times without replacement, so this
-    is effectively sampling a random permutation with probabilities over the
-    permutations derived from the logprobs.
-
-    Args:
-      key: prng key
-      logits: logarithm of probabilities to sample from, probabilities can be
-        unnormalized.
-
-    Returns:
-      Sample from logprobs in one-hot form.
-    """
-    z = gumbel_noise(logits.shape, device=logits.device, generator=generator)
-    return torch.argsort(logits + z, dim=-1, descending=True)
+# def gumbel_argsort_sample_idx(
+#     logits: torch.Tensor,
+#     generator: Optional[torch.Generator] = None
+# ) -> torch.Tensor:
+#     """Samples with replacement from a distribution given by 'logits'.
+#
+#     This uses Gumbel trick to implement the sampling an efficient manner. For a
+#     distribution over k items this samples k times without replacement, so this
+#     is effectively sampling a random permutation with probabilities over the
+#     permutations derived from the logprobs.
+#
+#     Args:
+#       key: prng key
+#       logits: logarithm of probabilities to sample from, probabilities can be
+#         unnormalized.
+#
+#     Returns:
+#       Sample from logprobs in one-hot form.
+#     """
+#     z = gumbel_noise(logits.shape, device=logits.device, generator=generator)
+#     return torch.argsort(logits + z, dim=-1, descending=True)
 
 
 def create_msa_feat(rows,deletion_matrix) -> torch.Tensor:
@@ -265,23 +266,6 @@ def create_relative_encodingV2(
     return torch.concatenate(rel_feats, dim=-1)
 
 
-def shuffle_msa(
-    msa: features.MSA
-) -> features.MSA:
-    """Shuffle MSA randomly, return batch with shuffled MSA.
-
-    Args:
-      key: rng key for random number generation.
-      msa: MSA object to sample msa from.
-
-    Returns:
-      Protein with sampled msa.
-    """
-    # Sample uniformly among sequences with at least one non-masked position.
-    logits = (torch.clip(torch.sum(msa.mask, dim=-1), 0.0, 1.0) - 1.0) * 1e6
-    index_order = gumbel_argsort_sample_idx(logits)
-
-    return msa.index_msa_rows(index_order)
 def shuffle_msa_runcate(
     rows,mask,deletion_matrix,num_msa: int
 ) :

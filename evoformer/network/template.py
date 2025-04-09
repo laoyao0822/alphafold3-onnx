@@ -220,6 +220,18 @@ class SingleTemplateEmbedding(nn.Module):
             128, self.num_channels, bias=False)
 
 
+        # self.template_pair_embeddings = nn.ModuleList([
+        #     self.template_pair_embedding_0,
+        #     self.template_pair_embedding_1,
+        #     self.template_pair_embedding_2,
+        #     self.template_pair_embedding_3,
+        #     self.template_pair_embedding_4,
+        #     self.template_pair_embedding_5,
+        #     self.template_pair_embedding_6,
+        #     self.template_pair_embedding_7,
+        #     self.template_pair_embedding_8
+        # ])
+
         self.template_embedding_iteration = nn.ModuleList(
             [pairformer.PairformerBlock(c_pair=self.num_channels, num_intermediate_factor=2, with_single=False)
              for _ in range(self.template_stack_num_layer)]
@@ -388,12 +400,76 @@ class SingleTemplateEmbedding(nn.Module):
 
         act = 0
 
-        for i, (x, n_input_dims) in enumerate(to_concat):
-            if n_input_dims == 0:
-                x = x[..., None]
-            act += self.__getattr__(f'template_pair_embedding_{i}')(x)
+        # 处理第0个元素
+        x, n_input_dims = to_concat[0]
+        if n_input_dims == 0:
+            x = x[..., None]
+        act += self.template_pair_embedding_0(x)
+
+        # 处理第1个元素
+        x, n_input_dims = to_concat[1]
+        if n_input_dims == 0:
+            x = x[..., None]
+        act += self.template_pair_embedding_1(x)
+
+        # 处理第2个元素
+        x, n_input_dims = to_concat[2]
+        if n_input_dims == 0:
+            x = x[..., None]
+        act += self.template_pair_embedding_2(x)
+
+        # 处理第3个元素
+        x, n_input_dims = to_concat[3]
+        if n_input_dims == 0:
+            x = x[..., None]
+        act += self.template_pair_embedding_3(x)
+
+        # 处理第4个元素
+        x, n_input_dims = to_concat[4]
+        if n_input_dims == 0:
+            x = x[..., None]
+        act += self.template_pair_embedding_4(x)
+
+        # 处理第5个元素
+        x, n_input_dims = to_concat[5]
+        if n_input_dims == 0:
+            x = x[..., None]
+        act += self.template_pair_embedding_5(x)
+
+        # 处理第6个元素
+        x, n_input_dims = to_concat[6]
+        if n_input_dims == 0:
+            x = x[..., None]
+        act += self.template_pair_embedding_6(x)
+
+        # 处理第7个元素
+        x, n_input_dims = to_concat[7]
+        if n_input_dims == 0:
+            x = x[..., None]
+        act += self.template_pair_embedding_7(x)
+
+        # 处理第8个元素
+        x, n_input_dims = to_concat[8]
+        if n_input_dims == 0:
+            x = x[..., None]
+        act += self.template_pair_embedding_8(x)
 
         return act
+
+        # for i, (x, n_input_dims) in enumerate(to_concat):
+        #     if n_input_dims == 0:
+        #         x = x[..., None]
+        #     print("__getattr__",i)
+            # act += self.__getattr__(f'template_pair_embedding_{i}')(x)
+            # act += self.template_embedding_iteration[i](x)
+            # act += self.template_pair_embedding_1(x)
+            # act += self.template_pair_embedding_2(x)
+            # act += self.template_pair_embedding_3(x)
+            # act += self.template_pair_embedding_4(x)
+            # act += self.template_pair_embedding_5(x)
+            # act += self.template_pair_embedding_6(x)
+            # act += self.template_pair_embedding_7(x)
+            # act += self.template_pair_embedding_8(x)
 
     def forward(
         self,
