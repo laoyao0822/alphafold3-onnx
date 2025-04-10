@@ -17,7 +17,7 @@ import torch.nn as nn
 from evoformer.network.modules import Transition, OuterProductMean,TriangleMultiplication
 from evoformer.network.attention import GridSelfAttention, MSAAttention
 from evoformer.network.diffusion_transformer import SelfAttention
-from evoformer.network.layer_norm import LayerNorm
+from torch.nn import LayerNorm
 
 class PairformerBlock(nn.Module):
     """Implements Algorithm 17 [Line2-Line8] in AF3

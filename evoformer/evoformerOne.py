@@ -18,7 +18,8 @@ from evoformer.network import featurization
 from evoformer.network.pairformer import EvoformerBlock, PairformerBlock
 from evoformer.network.template import TemplateEmbedding
 # from evoformer.network import atom_cross_attention
-
+from alphafold3.constants import residue_names
+from evoformer.misc import protein_data_processing
 
 class Evoformer(nn.Module):
     def __init__(self, msa_channel: int = 64):
@@ -64,7 +65,7 @@ class Evoformer(nn.Module):
 
         self.trunk_pairformer = nn.ModuleList(
             [PairformerBlock(with_single=True) for _ in range(self.pairformer_num_layer)])
-
+        self.POLYMER_TYPES_NUM_WITH_UNKNOWN_AND_GAP=residue_names.POLYMER_TYPES_NUM_WITH_UNKNOWN_AND_GAP
     # def _relative_encoding(
     #     self, batch: feat_batch.Batch, pair_activations: torch.Tensor
     # ) -> torch.Tensor:
@@ -241,6 +242,25 @@ class Evoformer(nn.Module):
 
         return pair_activations + template_act
 
+    def create_msa_feat(self,rows, deletion_matrix) -> torch.Tensor:
+        """Create and concatenate MSA features."""
+        msa_1hot = torch.nn.functional.one_hot(
+            rows.to(
+                dtype=torch.int64), self.POLYMER_TYPES_NUM_WITH_UNKNOWN_AND_GAP + 1
+        )
+        deletion_matrix = deletion_matrix
+        has_deletion = torch.clip(deletion_matrix, 0.0, 1.0)[..., None]
+        deletion_value = (torch.arctan(deletion_matrix / 3.0) * (2.0 / torch.pi))[
+            ..., None
+        ]
+
+        msa_feat = [
+            msa_1hot,
+            has_deletion,
+            deletion_value,
+        ]
+
+        return torch.concatenate(msa_feat, dim=-1)
     def _embed_process_msa(
         self,
         # msa_batch: features.MSA,
@@ -260,7 +280,7 @@ class Evoformer(nn.Module):
         rows, mask, deletion_matrix= featurization.shuffle_msa_runcate(rows, mask, deletion_matrix,num_msa=self.num_msa)
 
         msa_mask = mask.to(dtype=dtype)
-        msa_feat = featurization.create_msa_feat(rows,deletion_matrix).to(dtype=dtype)
+        msa_feat = self.create_msa_feat(rows,deletion_matrix).to(dtype=dtype)
 
         msa_activations = self.msa_activations(msa_feat)
         msa_activations += self.extra_msa_target_feat(target_feat)[None]
@@ -476,6 +496,25 @@ class EvoFormerOne():
         single=torch.zeros(
                 [num_res, self.evoformer_seq_channel], dtype=torch.float32, device=target_feat.device,
             )
+
+        template_aatype = batch.templates.aatype
+        template_atom_positions = batch.templates.atom_positions
+        template_atom_mask = batch.templates.atom_mask
+        num_templates = template_aatype.shape[0]
+
+        # print(num_templates)
+
+        pseudo_beta_positions=torch.zeros(size=(num_templates,num_res,3))
+        pseudo_beta_mask=torch.zeros(size=(num_templates,num_res,3))
+
+        # for template_idx in range(num_templates):
+        #     pb_position, pb_mask = scoring.pseudo_beta_fn(
+        #         template_aatype[template_idx], template_atom_positions[template_idx], template_atom_mask[template_idx]
+        #     )
+        #     pseudo_beta_positions[template_idx] = pb_position
+        #     pseudo_beta_mask[template_idx] = pb_mask
+
+
         # time1=time.time()
         for _ in range(self.num_recycles + 1):
         # for _ in range(0+1):

@@ -13,81 +13,28 @@ from dataclasses import dataclass
 import torch
 import torch.nn as nn
 
-from evoformer.misc import features, scoring, protein_data_processing, geometry,geometry_method
+from evoformer.misc import protein_data_processing
+from evoformer.misc import geometry,geometry_method
 from alphafold3.constants import residue_names
 from evoformer.network import pairformer
-from evoformer.network.layer_norm import LayerNorm
-@dataclass
-class DistogramFeaturesConfig:
-    # The left edge of the first bin.
-    min_bin: float = 3.25
-    # The left edge of the final bin. The final bin catches everything larger than
-    # `max_bin`.
-    max_bin: float = 50.75
-    # The number of bins in the distogram.
-    num_bins: int = 39
-
-
-min_bin: float = 3.25
-# The left edge of the final bin. The final bin catches everything larger than
- # `max_bin`.
-max_bin: float = 50.75
-# The number of bins in the distogram.
-num_bins: int = 39
-
-
-
-
-def make_backbone_rigid(
-    positions: geometry.Vec3Array,
-    mask: torch.Tensor,
-    group_indices: torch.Tensor,
-) -> tuple[geometry.Rigid3Array, torch.Tensor]:
-    """Make backbone Rigid3Array and mask.
-
-    Args:
-      positions: (num_res, num_atoms) of atom positions as Vec3Array.
-      mask: (num_res, num_atoms) for atom mask.
-      group_indices: (num_res, num_group, 3) for atom indices forming groups.
-
-    Returns:
-      tuple of backbone Rigid3Array and mask (num_res,).
-    """
-    backbone_indices = group_indices[:, 0]
-
-    # main backbone frames differ in sidechain frame convention.
-    # for sidechain it's (C, CA, N), for backbone it's (N, CA, C)
-    # Hence using c, b, a, each of shape (num_res,).
-    c, b, a = [backbone_indices[..., i] for i in range(3)]
-    c, b, a = [x.to(dtype=torch.int64).unsqueeze(1) for x in [c, b, a]]
-
-    # slice_index = jax.vmap(lambda x, i: x[i])
-    # rigid_mask = (
-    #     slice_index(mask, a) * slice_index(mask, b) * slice_index(mask, c)
-    # ).astype(jnp.float32)
-
-    rigid_mask = torch.gather(mask, 1, a).squeeze(1) \
-        * torch.gather(mask, 1, b).squeeze(1) \
-        * torch.gather(mask, 1, c).squeeze(1)
-
-    frame_positions = []
-    for indices in [a, b, c]:
-        frame_positions.append(
-            geometry.Vec3Array(
-                x=torch.gather(positions.x, 1, indices).squeeze(1),
-                y=torch.gather(positions.y, 1, indices).squeeze(1),
-                z=torch.gather(positions.z, 1, indices).squeeze(1),
-            )
-        )
-
-    rotation = geometry.Rot3Array.from_two_vectors(
-        frame_positions[2] - frame_positions[1],
-        frame_positions[0] - frame_positions[1],
-    )
-    rigid = geometry.Rigid3Array(rotation, frame_positions[1])
-
-    return rigid, rigid_mask.to(dtype=torch.float32)
-
+from torch.nn import LayerNorm
+# @dataclass
+# class DistogramFeaturesConfig:
+#     # The left edge of the first bin.
+#     min_bin: float = 3.25
+#     # The left edge of the final bin. The final bin catches everything larger than
+#     # `max_bin`.
+#     max_bin: float = 50.75
+#     # The number of bins in the distogram.
+#     num_bins: int = 39
+#
+#
+# min_bin: float = 3.25
+# # The left edge of the final bin. The final bin catches everything larger than
+#  # `max_bin`.
+# max_bin: float = 50.75
+# # The number of bins in the distogram.
+# num_bins: int = 39
 
 
 def make_backbone_rigid_tensor(
@@ -246,7 +193,9 @@ class SingleTemplateEmbedding(nn.Module):
         # The number of bins in the distogram.
         self.num_bins =39
 
-
+        self.RESTYPE_PSEUDOBETA_INDEX=nn.Parameter(protein_data_processing.RESTYPE_PSEUDOBETA_INDEX,requires_grad=False)
+        self.POLYMER_TYPES_NUM_WITH_UNKNOWN_AND_GAP=residue_names.POLYMER_TYPES_NUM_WITH_UNKNOWN_AND_GAP
+        self.RESTYPE_RIGIDGROUP_DENSE_ATOM_IDX=nn.Parameter(protein_data_processing.RESTYPE_RIGIDGROUP_DENSE_ATOM_IDX,requires_grad=False)
 
     def dgram_from_positions(self,positions: torch.Tensor):
         """Compute distogram from amino acid positions.
@@ -276,6 +225,55 @@ class SingleTemplateEmbedding(nn.Module):
         ).to(dtype=torch.float32)
         return dgram
 
+    def pseudo_beta_fn(
+            self,
+            aatype: torch.Tensor,
+            dense_atom_positions: torch.Tensor,
+            dense_atom_masks: torch.Tensor,
+            is_ligand: torch.Tensor | None = None,
+    ) -> tuple[torch.Tensor, torch.Tensor] | torch.Tensor:
+        """Create pseudo beta atom positions and optionally mask.
+        Args:
+          aatype: [num_res] amino acid types.
+          dense_atom_positions: [num_res, NUM_DENSE, 3] vector of all atom positions.
+          dense_atom_masks: [num_res, NUM_DENSE] mask.
+          is_ligand: [num_res] flag if something is a ligand.
+          use_jax: whether to use jax for the computations.
+
+        Returns:
+          Pseudo beta dense atom positions and the corresponding mask.
+        """
+        #   if use_jax:
+        #     xnp = jnp
+        #   else:
+        #     xnp = np
+
+        if is_ligand is None:
+            is_ligand = torch.zeros_like(aatype)
+        # torch.take_along_dim(input, indices, dim=None, *, out=None) → Tensor
+        pseudobeta_index_polymer = torch.take_along_dim(
+            self.RESTYPE_PSEUDOBETA_INDEX, aatype.to(dtype=torch.int64),
+            dim=0
+        ).to(dtype=torch.int32)
+
+        pseudobeta_index = torch.where(
+            is_ligand.to(dtype=torch.bool),
+            torch.zeros_like(pseudobeta_index_polymer),
+            pseudobeta_index_polymer,
+        ).to(dtype=torch.int64)
+
+        pseudo_beta = torch.take_along_dim(
+            dense_atom_positions, pseudobeta_index[..., None, None], dim=-2
+        )
+        pseudo_beta = torch.squeeze(pseudo_beta, dim=-2)
+
+        pseudo_beta_mask = torch.take_along_dim(
+            dense_atom_masks, pseudobeta_index[..., None], dim=-1
+        ).to(dtype=torch.float32)
+        pseudo_beta_mask = torch.squeeze(pseudo_beta_mask, dim=-1)
+
+        return pseudo_beta, pseudo_beta_mask
+
     def construct_input(
         self, query_embedding,
             # templates: features.Templates,
@@ -293,12 +291,15 @@ class SingleTemplateEmbedding(nn.Module):
         # dense_atom_positions = templates.atom_positions
         dense_atom_positions *= dense_atom_mask[..., None]
 
-        pseudo_beta_positions, pseudo_beta_mask = scoring.pseudo_beta_fn(
+        pseudo_beta_positions, pseudo_beta_mask = self.pseudo_beta_fn(
             templates_aatype, dense_atom_positions, dense_atom_mask
         )
+
         pseudo_beta_mask_2d = (
             pseudo_beta_mask[:, None] * pseudo_beta_mask[None, :]
         )
+
+        # print(pseudo_beta_positions.shape, pseudo_beta_mask.shape,pseudo_beta_mask_2d.shape)
         pseudo_beta_mask_2d *= multichain_mask_2d
         dgram = self.dgram_from_positions(
             pseudo_beta_positions
@@ -310,7 +311,7 @@ class SingleTemplateEmbedding(nn.Module):
 
         aatype = torch.nn.functional.one_hot(
             aatype.to(dtype=torch.int64),
-            residue_names.POLYMER_TYPES_NUM_WITH_UNKNOWN_AND_GAP
+            self.POLYMER_TYPES_NUM_WITH_UNKNOWN_AND_GAP
         ).to(dtype=dtype)
         to_concat.append((aatype[None, :, :], 1))
         to_concat.append((aatype[:, None, :], 1))
@@ -318,9 +319,9 @@ class SingleTemplateEmbedding(nn.Module):
         # Compute a feature representing the normalized vector between each
         # backbone affine - i.e. in each residues local frame, what direction are
         # each of the other residues.
-
+        # print("protein_data_processing:",protein_data_processing.RESTYPE_RIGIDGROUP_DENSE_ATOM_IDX.to(device=templates_aatype.device).shape)
         template_group_indices = torch.take_along_dim(
-            protein_data_processing.RESTYPE_RIGIDGROUP_DENSE_ATOM_IDX.to(device=templates_aatype.device),
+            self.RESTYPE_RIGIDGROUP_DENSE_ATOM_IDX.to(device=templates_aatype.device),
             templates_aatype.to(dtype=torch.int64)[..., None, None],
             dim=0
         )
@@ -393,18 +394,19 @@ class SingleTemplateEmbedding(nn.Module):
         # pseudo beta mask which just needs CB) so we add both masks as features.
         to_concat.extend([(x, 0) for x in unit_vector])
         to_concat.append((backbone_mask_2d, 0))
+        # for in_concat,_ in to_concat:
+        #     print("in_concat",in_concat.shape)
+
 
         query_embedding = self.query_embedding_norm(query_embedding)
 
         to_concat.append((query_embedding, 1))
-
-        act = 0
-
+        # act = 0
         # 处理第0个元素
         x, n_input_dims = to_concat[0]
         if n_input_dims == 0:
             x = x[..., None]
-        act += self.template_pair_embedding_0(x)
+        act = self.template_pair_embedding_0(x)
 
         # 处理第1个元素
         x, n_input_dims = to_concat[1]

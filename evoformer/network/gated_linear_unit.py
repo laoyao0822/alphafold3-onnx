@@ -1,9 +1,7 @@
 import torch
 
-import triton
-from torchfold3.config import *
 
-import triton.language as tl
+
 
 def gated_linear_unit_torch(x, weight):
     y = torch.matmul(x, weight)

@@ -124,4 +124,4 @@ def _make_aatype_dense_atom_to_atom37():
     return restype_dense_atom_to_atom37
 
 
-PROTEIN_AATYPE_DENSE_ATOM_TO_ATOM37 = _make_aatype_dense_atom_to_atom37()
+# PROTEIN_AATYPE_DENSE_ATOM_TO_ATOM37 = _make_aatype_dense_atom_to_atom37()

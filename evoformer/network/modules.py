@@ -12,8 +12,8 @@
 import torch
 import torch.nn as nn
 
-from torchfold3.network.layer_norm import LayerNorm
-from torchfold3.network.gated_linear_unit import gated_linear_unit_torch
+from torch.nn import LayerNorm
+from evoformer.network.gated_linear_unit import gated_linear_unit_torch
 
 
 

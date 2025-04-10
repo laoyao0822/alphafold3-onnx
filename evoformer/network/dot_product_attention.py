@@ -43,7 +43,6 @@ def dot_product_attention(q: torch.Tensor,
         q = q.unsqueeze(0)
         k = k.unsqueeze(0)
         v = v.unsqueeze(0)
-
     # out = dot_product_attention_torch(q, k, v, mask, bias)
     # out = dot_product_attention_flex(q, k, v, mask, bias)
     # if k.shape[-1] not in {16, 32, 64, 128}:

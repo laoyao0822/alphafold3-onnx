@@ -16,7 +16,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import einops
 
-from evoformer.network.layer_norm import LayerNorm
+from torch.nn import LayerNorm
 from evoformer.network.dot_product_attention import dot_product_attention
 
 
