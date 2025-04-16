@@ -142,7 +142,7 @@ def create_relative_encodingV2(
     )
     rel_chain = torch.nn.functional.one_hot(final_rel_chain.to(
         dtype=torch.int64), 2 * max_relative_chain + 2)
-    print(rel_pos.dtype,rel_token.dtype,rel_chain.dtype)
+    # print(rel_pos.dtype,rel_token.dtype,rel_chain.dtype)
     # rel_entity = entity_id_same.to(dtype=rel_pos.dtype)[..., None]
     # print("rel_pos",rel_pos.shape,"rel_token",rel_token.shape,"entity_id_same",entity_id_same[..., None].shape,"rel_chain",rel_chain.shape)
     rel_feats=[rel_pos,rel_token,

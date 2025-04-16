@@ -14,10 +14,10 @@ from typing import Optional
 import torch
 import torch.nn as nn
 
-from evoformer.network.modules import Transition, OuterProductMean,TriangleMultiplication
-from evoformer.network.attention import GridSelfAttention, MSAAttention
-from evoformer.network.diffusion_transformer import SelfAttention
-from torch.nn import LayerNorm
+from torchfold3.network.modules import Transition, OuterProductMean,TriangleMultiplication
+from torchfold3.network.attention import GridSelfAttention, MSAAttention
+from torchfold3.network.diffusion_transformer import SelfAttention
+from torchfold3.network.layer_norm import LayerNorm
 
 class PairformerBlock(nn.Module):
     """Implements Algorithm 17 [Line2-Line8] in AF3
@@ -109,42 +109,3 @@ class PairformerBlock(nn.Module):
             return pair, single
         return pair
 
-
-class EvoformerBlock(nn.Module):
-    def __init__(self, c_msa: int = 64, c_pair: int = 128, n_heads_pair: int = 4) -> None:
-        super(EvoformerBlock, self).__init__()
-
-        self.outer_product_mean = OuterProductMean(
-            c_msa=c_msa, num_output_channel=c_pair)
-        self.msa_attention1 = MSAAttention(c_msa=c_msa, c_pair=c_pair)
-        self.msa_transition = Transition(c_x=c_msa)
-
-        self.triangle_multiplication_outgoing = TriangleMultiplication(
-            c_pair=c_pair, _outgoing=True)
-        self.triangle_multiplication_incoming = TriangleMultiplication(
-            c_pair=c_pair, _outgoing=False)
-        self.pair_attention1 = GridSelfAttention(
-            c_pair=c_pair, num_head=n_heads_pair, transpose=False
-        )
-        self.pair_attention2 = GridSelfAttention(
-            c_pair=c_pair, num_head=n_heads_pair, transpose=True
-        )
-        self.pair_transition = Transition(c_x=c_pair)
-
-    def forward(
-        self,
-        msa: torch.Tensor,
-        pair: torch.Tensor,
-        msa_mask: torch.Tensor,
-        pair_mask: torch.Tensor
-    ) -> tuple[torch.Tensor, torch.Tensor]:
-        pair += self.outer_product_mean(msa, msa_mask)
-        msa += self.msa_attention1(msa, msa_mask, pair)
-        msa += self.msa_transition(msa)
-        pair += self.triangle_multiplication_outgoing(pair, mask=pair_mask)
-        pair += self.triangle_multiplication_incoming(pair, mask=pair_mask)
-        pair += self.pair_attention1(pair, mask=pair_mask)
-        pair += self.pair_attention2(pair, mask=pair_mask)
-        pair += self.pair_transition(pair)
-
-        return msa, pair

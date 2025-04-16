@@ -505,7 +505,10 @@ class AlphaFold3(nn.Module):
         samples={'atom_positions': positions, 'mask': final_dense_atom_mask}
         time2=time.time()
         confidence_output_per_sample = []
+        print("positions shape:",positions.shape)
+        positions_c=positions.clone()
         for sample_dense_atom_position in samples['atom_positions']:
+            print("sample_dense_atom_position", sample_dense_atom_position.shape)
             confidence_output_per_sample.append(self.confidence_head(
                 dense_atom_positions=sample_dense_atom_position,
                 embeddings=embeddings,
@@ -514,10 +517,17 @@ class AlphaFold3(nn.Module):
                 asym_id=batch.token_features.asym_id
             ))
         print("confidence_head cost time:",time.time()-time2)
+        # print("confidence_output_per_sample:",confidence_output_per_sample[0].shape)
         confidence_output = {}
         for key in confidence_output_per_sample[0]:
             confidence_output[key] = torch.stack(
                 [sample[key] for sample in confidence_output_per_sample], dim=0)
+
+        if torch.allclose(positions_c, positions, rtol=1e-5):
+            print("positions 张量没有变化")
+        else:
+            print("positions_c 张量发生了变化")
+        # exit(0)
 
         distogram = self.distogram_head(batch, embeddings)
 

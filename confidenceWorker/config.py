@@ -1,0 +1,20 @@
+__all__ = ['_CPU_IPEX_OPT', '_CPU_FLUSH_DENORM_OPT', '_CPU_AMP_OPT', '_SCORE_TABLE_TIMESTAMP', '_SCORE_TABLE_DISPALY_TOP',
+           '_SCORE_TABLE_DISPALY_AVG', ]
+
+# GPU
+
+# CPU
+_CPU_IPEX_OPT = True
+_CPU_FLUSH_DENORM_OPT = True
+_CPU_AMP_OPT = True
+
+#Tensor Parallel
+_GridAttention_TP = True
+
+
+# DEBUG
+_SCORE_TABLE_TIMESTAMP = False
+_SCORE_TABLE_DISPALY_TOP = True
+_SCORE_TABLE_DISPALY_AVG = True
+
+#检测互斥

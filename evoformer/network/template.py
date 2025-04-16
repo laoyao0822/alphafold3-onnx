@@ -210,6 +210,7 @@ class SingleTemplateEmbedding(nn.Module):
             self.min_bin, self.max_bin, self.num_bins, device=positions.device)
         lower_breaks = torch.square(lower_breaks)
         upper_breaks_last = torch.ones(1, device=lower_breaks.device) * 1e8
+        # print(lower_breaks.dtype,upper_breaks_last.dtype)
         upper_breaks = torch.concatenate(
             [lower_breaks[1:], upper_breaks_last], dim=-1
         )

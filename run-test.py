@@ -41,7 +41,10 @@ from torchfold3.config import *
 from torchfold3.misc import feat_batch
 from target_feat.misc import params as target_feat_params
 from evoformer.evoformerOne import EvoFormerOne
+from evoformer.evoformerOne import EvoformerVino
 from evoformer.misc import params as evoformer_params
+from confidenceWorker.confidence import ConfidenceOne
+from confidenceWorker.misc import params as confidence_params
 import time
 
 # from diffusionWorker2.diffusionOne import DiffusionOne
@@ -53,12 +56,14 @@ DIFFUSION_ONNX=False
 SAVE_ONNX=False
 UseVino=False
 SAVE_EVO_ONNX=False
+USE_EVO_VINO=False
+USE_IPEX=True
 _HOME_DIR = pathlib.Path(os.environ.get('HOME'))
 DEFAULT_MODEL_DIR = _HOME_DIR / 'models/model_103275239_1'
 DEFAULT_DB_DIR = _HOME_DIR / 'public_databases'
 ONNX_PATH = '/root/pycharm/diffusion_head_onnx/diffusion_head.onnx'
 EVO_ONNX_PATH = '/root/pycharm/evo_onnx/evoformer.onnx'
-
+EVO_VINO_PATH='/root/pycharm/evo_vino/model.xml'
 # ONNX_PATH='/root/pycharm/diffusion_head_onnx_base_fp16/diffusion_head.onnx'
 OPENVINO_PATH = '/root/pycharm/diffusion_head_openvino/model.xml'
 
@@ -215,10 +220,15 @@ class ModelRunner:
         self.target_feat=TargetFeat()
         self.target_feat.eval()
         target_feat_params.import_jax_weights_(self.target_feat,model_dir)
-        print('import evoformer')
-        self.evoformer=EvoFormerOne()
-        self.evoformer.evoformer.eval()
-        evoformer_params.import_evoformer_jax_weights_(self.evoformer.evoformer,model_dir)
+        if USE_EVO_VINO:
+            print('import evoformer vino')
+            self.evoformer=EvoformerVino()
+            self.evoformer.initOpenvinoModel(EVO_VINO_PATH)
+        else:
+            print('import evoformer torch')
+            self.evoformer=EvoFormerOne()
+            self.evoformer.evoformer.eval()
+            evoformer_params.import_evoformer_jax_weights_(self.evoformer.evoformer,model_dir)
 
         # diffusion=onnx.load('/root/pycharm/diffusion_onnx5/diffusion.onnx',load_external_data=True)
         # onnx.checker.check_model('/root/pycharm/diffusion_onnx5/diffusion.onnx')
@@ -240,7 +250,6 @@ class ModelRunner:
             self.diffusion.diffusion_head.eval()
             # diffusion_params.import_jax_weights_(self.diffusion.apply_step,model_dir)
             self.diffusion.import_diffusion_head_params(model_dir)
-
         #
         # self._model = self._model.to(device=self._device)
         else:
@@ -250,20 +259,23 @@ class ModelRunner:
             # self.diffusion.initOpenvinoModel(OPENVINO_PATH)
             # self.diffusion.import_diffusion_head_params(model_dir)
 
+        self.confidence=ConfidenceOne()
+        confidence_params.import_jax_weights_(self.confidence,model_dir)
+
         # Apply IPEX optimization for CPU if device is CPU
         if _CPU_INFERENCE.value:
             print("mkl",torch.backends.mkl.is_available(),"onednn",torch.backends.mkldnn.is_available())
-            if not SAVE_ONNX and  not DIFFUSION_ONNX and not UseVino and not SAVE_EVO_ONNX:
+            if not SAVE_ONNX and  not DIFFUSION_ONNX and not UseVino and not SAVE_EVO_ONNX and not USE_EVO_VINO and USE_IPEX:
                 # pass
                 import intel_extension_for_pytorch as ipex
                 # import openvino as ov
-                # print("Applying Intel Extension for PyTorch optimizations...")
-                # self._model = ipex.optimize(self._model,weights_prepack=False,optimize_lstm=True,auto_kernel_selection=True,dtype=torch.bfloat16)
-                #
-                # self.target_feat = ipex.optimize(self.target_feat,weights_prepack=False,optimize_lstm=True,auto_kernel_selection=True,dtype=torch.bfloat16)
-                # self.evoformer.evoformer = ipex.optimize(self.evoformer.evoformer,weights_prepack=False,optimize_lstm=True,auto_kernel_selection=True,dtype=torch.bfloat16)
-                # self.diffusion.diffusion_head = ipex.optimize(self.diffusion.diffusion_head,weights_prepack=False,optimize_lstm=True,auto_kernel_selection=True,dtype=torch.bfloat16)
-                # # opts = {"device": "CPU", "config": {"PERFORMANCE_HINT": "LATENCY"}, "model_caching" : True,"cache_dir": "./model_cache"}
+                print("Applying Intel Extension for PyTorch optimizations...")
+                self._model = ipex.optimize(self._model,weights_prepack=False,optimize_lstm=True,auto_kernel_selection=True,dtype=torch.bfloat16)
+
+                self.target_feat = ipex.optimize(self.target_feat,weights_prepack=False,optimize_lstm=True,auto_kernel_selection=True,dtype=torch.bfloat16)
+                self.evoformer.evoformer = ipex.optimize(self.evoformer.evoformer,weights_prepack=False,optimize_lstm=True,auto_kernel_selection=True,dtype=torch.bfloat16)
+                self.diffusion.diffusion_head = ipex.optimize(self.diffusion.diffusion_head,weights_prepack=False,optimize_lstm=True,auto_kernel_selection=True,dtype=torch.bfloat16)
+                # opts = {"device": "CPU", "config": {"PERFORMANCE_HINT": "LATENCY"}, "model_caching" : True,"cache_dir": "./model_cache"}
                 # self.diffusion.diffusion_head=torch.compile(self.diffusion.diffusion_head,backend="openvino",options=opts)
                 # self.evoformer.evoformer=torch.compile(self.evoformer.evoformer, backend="openvino",dynamic=True)
                 # self.diffusion.diffusion_head=torch.compile(self.diffusion.diffusion_head, backend="openvino",dynamic=False,options=opts)
@@ -302,14 +314,14 @@ class ModelRunner:
 
         if _CPU_INFERENCE.value==False:
             if True:
-                # with torch.amp.autocast(device_type="cuda", dtype=torch.bfloat16):
+                with torch.amp.autocast(device_type="cuda", dtype=torch.bfloat16):
                     print("Running inference with AMP on GPU...")
                     result = self._model(featurised_example)
                     result['__identifier__'] = self._model.__identifier__.numpy()
 
         else: # CPU Inference
             if _CPU_AMP_OPT:
-                # with torch.amp.autocast(device_type="cpu", dtype=torch.bfloat16):
+                with torch.amp.autocast(device_type="cpu", dtype=torch.bfloat16):
                     print("Running inference with AMP on CPU...")
                     # self._model=torch.jit.trace(self._model,featurised_example)
                     # result = self._model(featurised_example)
@@ -349,13 +361,11 @@ class ModelRunner:
                     target_feat_c=target_feat.clone()
                     print("create target feat cost time %.2f seconds"% (time.time()-time1))
                     time1=time.time()
-                    embeddings=self.evoformer.forward(featurised_example,target_feat=target_feat)
-                    if torch.allclose(target_feat, target_feat_c, 1e-5):
-                        print("target feat not change--------")
-                    else:
-                        print("target feat change! ")
+                    embeddings=self.evoformer.forward(featurised_example,target_feat)
                     target_feat=target_feat_c
                     print("Evoformer took %.2f seconds" % (time.time()-time1))
+                    # exit(0)
+
                     pred_dense_atom_mask = batch.predicted_structure_info.atom_mask
 
                     positions = torch.zeros((_NUM_DIFFUSION_SAMPLES.value,) + pred_dense_atom_mask.shape + (3,), device='cpu', dtype=torch.float32)
@@ -383,6 +393,7 @@ class ModelRunner:
                         print("diffusion cost time: ", time.time() - time1)
                 # with torch.amp.autocast(device_type="cpu", dtype=torch.bfloat16):
                 #     print(positions[0][0])
+                #     confidence_out=self.confidence
                     result=self._model(featurised_example,embeddings,positions)
 
                     # if torch.allclose(result, target_feat, rtol=1e-5):
@@ -443,7 +454,6 @@ class ResultsForSeed:
       full_fold_input: The fold input that must also include the results of
         running the data pipeline - MSA and templates.
     """
-
     seed: int
     inference_results: Sequence[model.InferenceResult]
     full_fold_input: folding_input.Input
@@ -731,7 +741,8 @@ def main(_):
         raise AssertionError(
             'Exactly one of --json_path or --input_dir must be specified.'
         )
-
+    pid = os.getpid()
+    print(f"Main Thread PID: {pid}")
     # Make sure we can create the output directory before running anything.
     try:
         os.makedirs(_OUTPUT_DIR.value, exist_ok=True)

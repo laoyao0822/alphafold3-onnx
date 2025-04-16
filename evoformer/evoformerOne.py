@@ -9,6 +9,7 @@
 # https://github.com/google-deepmind/alphafold3/blob/main/WEIGHTS_TERMS_OF_USE.md
 import time
 
+import numpy as np
 import torch
 import torch.nn as nn
 from torch import distributed as dist
@@ -125,95 +126,6 @@ class Evoformer(nn.Module):
         # pair_mask = (mask[:, None] * mask[None, :]).to(dtype=target_feat.dtype)
         return self.left_single(target_feat)[:, None]+self.right_single(target_feat)[None], (mask[:, None] * mask[None, :]).to(dtype=target_feat.dtype)
 
-    # def _embed_bonds(
-    #     self, batch: feat_batch.Batch, pair_activations: torch.Tensor
-    # ) -> torch.Tensor:
-    #     """Embeds bond features and merges into pair activations."""
-    #     # Construct contact matrix.
-    #     num_tokens = batch.token_features.token_index.shape[0]
-    #     contact_matrix = torch.zeros(
-    #         (num_tokens, num_tokens), dtype=pair_activations.dtype, device=pair_activations.device)
-    #
-    #     tokens_to_polymer_ligand_bonds = (
-    #         batch.polymer_ligand_bond_info.tokens_to_polymer_ligand_bonds
-    #     )
-    #     gather_idxs_polymer_ligand = tokens_to_polymer_ligand_bonds.gather_idxs
-    #     gather_mask_polymer_ligand = (
-    #         tokens_to_polymer_ligand_bonds.gather_mask.prod(dim=1).to(
-    #             dtype=gather_idxs_polymer_ligand.dtype)[:, None]
-    #     )
-    #     # If valid mask then it will be all 1's, so idxs should be unchanged.
-    #     gather_idxs_polymer_ligand = (
-    #         gather_idxs_polymer_ligand * gather_mask_polymer_ligand
-    #     )
-    #
-    #     tokens_to_ligand_ligand_bonds = (
-    #         batch.ligand_ligand_bond_info.tokens_to_ligand_ligand_bonds
-    #     )
-    #     gather_idxs_ligand_ligand = tokens_to_ligand_ligand_bonds.gather_idxs
-    #     gather_mask_ligand_ligand = tokens_to_ligand_ligand_bonds.gather_mask.prod(
-    #         dim=1
-    #     ).to(dtype=gather_idxs_ligand_ligand.dtype)[:, None]
-    #     gather_idxs_ligand_ligand = (
-    #         gather_idxs_ligand_ligand * gather_mask_ligand_ligand
-    #     )
-    #
-    #     gather_idxs = torch.concatenate(
-    #         [gather_idxs_polymer_ligand, gather_idxs_ligand_ligand]
-    #     )
-    #     contact_matrix[
-    #         gather_idxs[:, 0], gather_idxs[:, 1]
-    #     ] = 1.0
-    #
-    #     # Because all the padded index's are 0's.
-    #     contact_matrix[0, 0] = 0.0
-    #
-    #     bonds_act = self.bond_embedding(contact_matrix[:, :, None])
-    #
-    #     return pair_activations + bonds_act
-    def _embed_bonds(
-        self,
-            gather_idxs_polymer_ligand,
-            tokens_to_polymer_ligand_bonds_gather_mask,
-            gather_idxs_ligand_ligand,
-            tokens_to_ligand_ligand_bonds_gather_mask,
-            num_tokens,
-            pair_activations: torch.Tensor
-    ) -> torch.Tensor:
-        """Embeds bond features and merges into pair activations.
-        tokens_to_polymer_ligand_bonds_gather_idxs,
-            tokens_to_polymer_ligand_bonds_gather_mask,
-            tokens_to_ligand_ligand_bonds_gather_mask,
-            tokens_to_ligand_ligand_bonds_gather_idxs,
-            num_tokens,
-            pair_activations: torch.Tensor
-        """
-        contact_matrix = torch.zeros(
-            (num_tokens, num_tokens), dtype=pair_activations.dtype, device=pair_activations.device)
-
-        gather_mask_polymer_ligand = (
-            tokens_to_polymer_ligand_bonds_gather_mask.prod(dim=1).to(
-                dtype=gather_idxs_polymer_ligand.dtype)[:, None]
-        )
-        gather_mask_ligand_ligand = tokens_to_ligand_ligand_bonds_gather_mask.prod(
-            dim=1
-        ).to(dtype=gather_idxs_ligand_ligand.dtype)[:, None]
-
-        gather_idxs = torch.concatenate(
-            [(
-            gather_idxs_polymer_ligand * gather_mask_polymer_ligand
-        ), (
-            gather_idxs_ligand_ligand * gather_mask_ligand_ligand
-        )]
-        )
-        contact_matrix[
-            gather_idxs[:, 0], gather_idxs[:, 1]
-        ] = 1.0
-        # Because all the padded index's are 0's.
-        contact_matrix[0, 0] = 0.0
-        # bonds_act = self.bond_embedding(contact_matrix[:, :, None])
-        return pair_activations + self.bond_embedding(contact_matrix[:, :, None])
-
 
     def _embed_template_pair(
         self,
@@ -230,7 +142,6 @@ class Evoformer(nn.Module):
         dtype = pair_activations.dtype
         multichain_mask = (asym_id[:, None] ==
                            asym_id[None, :]).to(dtype=dtype)
-
         template_act = self.template_embedding(
             query_embedding=pair_activations,
             # templates=templates,
@@ -244,23 +155,23 @@ class Evoformer(nn.Module):
 
     def create_msa_feat(self,rows, deletion_matrix) -> torch.Tensor:
         """Create and concatenate MSA features."""
-        msa_1hot = torch.nn.functional.one_hot(
-            rows.to(
-                dtype=torch.int64), self.POLYMER_TYPES_NUM_WITH_UNKNOWN_AND_GAP + 1
-        )
+
         deletion_matrix = deletion_matrix
         has_deletion = torch.clip(deletion_matrix, 0.0, 1.0)[..., None]
         deletion_value = (torch.arctan(deletion_matrix / 3.0) * (2.0 / torch.pi))[
             ..., None
         ]
-
+        msa_1hot = torch.nn.functional.one_hot(
+            rows.to(
+                dtype=torch.int64), self.POLYMER_TYPES_NUM_WITH_UNKNOWN_AND_GAP + 1
+        ).to(dtype=has_deletion.dtype)
         msa_feat = [
             msa_1hot,
             has_deletion,
             deletion_value,
         ]
-
         return torch.concatenate(msa_feat, dim=-1)
+
     def _embed_process_msa(
         self,
         # msa_batch: features.MSA,
@@ -299,16 +210,13 @@ class Evoformer(nn.Module):
     def forward(
         self,
         single, pair,
-            # prev: dict[str, torch.Tensor],
-        target_feat: torch.Tensor,
-        # batch,
+        target_feat,
         msa, msa_mask, deletion_matrix,
 
         token_index, residue_index, asym_id, entity_id, sym_id,
 
         seq_mask,
-
-        t_o_pol_idx, t_o_pol_mask, t_o_lig_masks, t_o_lig_idxs,
+        contact_matrix,
         template_aatype, template_atom_positions, template_atom_mask,
 
     ) :
@@ -335,11 +243,12 @@ class Evoformer(nn.Module):
         # pair_activations = self._embed_bonds(
         #     batch=batch, pair_activations=pair_activations
         # )
-        pair_activations = self._embed_bonds(
-            gather_idxs_polymer_ligand=t_o_pol_idx, tokens_to_polymer_ligand_bonds_gather_mask=t_o_pol_mask,
-            gather_idxs_ligand_ligand=t_o_lig_idxs, tokens_to_ligand_ligand_bonds_gather_mask=t_o_lig_masks, num_tokens=num_tokens,
-            pair_activations=pair_activations
-        )
+        # pair_activations = self._embed_bonds(
+        #     gather_idxs_polymer_ligand=t_o_pol_idx, tokens_to_polymer_ligand_bonds_gather_mask=t_o_pol_mask,
+        #     gather_idxs_ligand_ligand=t_o_lig_idxs, tokens_to_ligand_ligand_bonds_gather_mask=t_o_lig_masks, num_tokens=num_tokens,
+        #     pair_activations=pair_activations
+        # )
+        pair_activations+=self.bond_embedding(contact_matrix)
 
         single_activations = self.single_activations(target_feat)
         single_activations += self.prev_single_embedding(
@@ -391,6 +300,7 @@ class EvoFormerOne():
 
         self.evoformer = Evoformer()
 
+
     def getOnnxModel(self, batch, target_feat, save_path, ):
         batch = feat_batch.Batch.from_data_dict(batch)
         num_res = batch.num_res
@@ -401,6 +311,14 @@ class EvoFormerOne():
         single = torch.zeros(
             [num_res, self.evoformer_seq_channel], dtype=torch.float32, device=target_feat.device,
         )
+        contact_matrix = self.get_contact_matrix(
+            gather_idxs_polymer_ligand=batch.polymer_ligand_bond_info.tokens_to_polymer_ligand_bonds.gather_idxs,
+            tokens_to_polymer_ligand_bonds_gather_mask=batch.polymer_ligand_bond_info.tokens_to_polymer_ligand_bonds.gather_mask,
+            gather_idxs_ligand_ligand=batch.ligand_ligand_bond_info.tokens_to_ligand_ligand_bonds.gather_idxs,
+            tokens_to_ligand_ligand_bonds_gather_mask=batch.ligand_ligand_bond_info.tokens_to_ligand_ligand_bonds.gather_mask,
+            num_tokens=num_res,
+        )
+
 
         seq_len = torch.export.Dim('seq_len', min=10, max=1600)
         ten_length = torch.export.Dim('ten_length', min=100, max=16000)
@@ -408,12 +326,13 @@ class EvoFormerOne():
         ten_length = 10 * seq_len
 
         edge_number = torch.export.Dim('edge_number', min=10, max=1500)
-        output_names = ["single", "pair"]
+        output_names = ["single_out", "pair_out"]
         ordered_keys=['single', 'pair', 'target_feat',
                         'msa', 'msa_mask', 'deletion_matrix',
                         'token_index', 'residue_index', 'asym_id', 'entity_id', 'sym_id',
                         'seq_mask',
-                        't_o_pol_idx', 't_o_pol_mask', 't_o_lig_idxs', 't_o_lig_masks',
+                        'contact_matrix',
+                        # 't_o_pol_idx', 't_o_pol_mask', 't_o_lig_idxs', 't_o_lig_masks',
                         'template_aatype', 'template_atom_positions', 'template_atom_mask',
                         ]
         kwarg_inputs = {
@@ -430,11 +349,11 @@ class EvoFormerOne():
             'sym_id': batch.token_features.sym_id,
 
             'seq_mask': batch.token_features.mask,
-
-            't_o_pol_idx': batch.polymer_ligand_bond_info.tokens_to_polymer_ligand_bonds.gather_idxs,
-            't_o_pol_mask': batch.polymer_ligand_bond_info.tokens_to_polymer_ligand_bonds.gather_mask,
-            't_o_lig_idxs': batch.ligand_ligand_bond_info.tokens_to_ligand_ligand_bonds.gather_idxs,
-            't_o_lig_masks': batch.ligand_ligand_bond_info.tokens_to_ligand_ligand_bonds.gather_mask,
+            'contact_matrix': contact_matrix,
+            # 't_o_pol_idx': batch.polymer_ligand_bond_info.tokens_to_polymer_ligand_bonds.gather_idxs,
+            # 't_o_pol_mask': batch.polymer_ligand_bond_info.tokens_to_polymer_ligand_bonds.gather_mask,
+            # 't_o_lig_idxs': batch.ligand_ligand_bond_info.tokens_to_ligand_ligand_bonds.gather_idxs,
+            # 't_o_lig_masks': batch.ligand_ligand_bond_info.tokens_to_ligand_ligand_bonds.gather_mask,
             'template_aatype': batch.templates.aatype,
             'template_atom_positions': batch.templates.atom_positions,
             'template_atom_mask': batch.templates.atom_mask,
@@ -470,11 +389,11 @@ class EvoFormerOne():
                           'sym_id': {0: seq_len},
 
                           'seq_mask': {0: seq_len},
-
-                          't_o_pol_idx': {0: seq_len},
-                          't_o_pol_mask': {0: seq_len},
-                          't_o_lig_idxs': {0: ten_length},
-                          't_o_lig_masks': {0: ten_length},
+                          'contact_matrix':{0: seq_len,1: seq_len},
+                          # 't_o_pol_idx': {0: seq_len},
+                          # 't_o_pol_mask': {0: seq_len},
+                          # 't_o_lig_idxs': {0: ten_length},
+                          # 't_o_lig_masks': {0: ten_length},
                           # 模板相关
                           'template_aatype': {1: seq_len},
                           'template_atom_positions': {1: seq_len},
@@ -482,6 +401,51 @@ class EvoFormerOne():
                       }
                           )
         exit(0)
+
+
+    def get_contact_matrix(
+        self,
+            gather_idxs_polymer_ligand,
+            tokens_to_polymer_ligand_bonds_gather_mask,
+            gather_idxs_ligand_ligand,
+            tokens_to_ligand_ligand_bonds_gather_mask,
+            num_tokens,
+            # pair_activations: torch.Tensor
+    ) -> torch.Tensor:
+        contact_matrix = torch.zeros(
+            (num_tokens, num_tokens), dtype=torch.float32)
+
+        gather_mask_polymer_ligand = tokens_to_polymer_ligand_bonds_gather_mask.prod(dim=1)[:, None]*gather_idxs_polymer_ligand
+
+        gather_mask_ligand_ligand = tokens_to_ligand_ligand_bonds_gather_mask.prod(dim=1)[:, None]*gather_idxs_ligand_ligand
+
+        # gather_mask_polymer_ligand=gather_mask_polymer_ligand.to(dtype=gather_idxs_polymer_ligand.dtype)
+        # gather_mask_ligand_ligand=gather_mask_ligand_ligand.to(dtype=gather_idxs_ligand_ligand.dtype)
+        print(gather_mask_polymer_ligand.dtype, gather_mask_ligand_ligand.dtype)
+        gather_idxs = torch.concatenate(
+            [ gather_mask_polymer_ligand.to(dtype=torch.int64),
+            gather_mask_ligand_ligand.to(dtype=torch.int64)]
+        )
+        # print("gather_idxs",gather_idxs.shape,"contact_matrix",contact_matrix.shape)
+        # print(gather_idxs[:, 0].shape,gather_idxs[:, 1].shape)
+        contact_matrix[
+            gather_idxs[:, 0], gather_idxs[:, 1]
+        ] = 1.0
+        # print("after contact_matrix",contact_matrix.shape)
+        contact_matrix[
+            gather_idxs[:, 0], gather_idxs[:, 1]
+        ] = torch.tensor(
+            1.0,
+            dtype=contact_matrix.dtype,
+            device=contact_matrix.device
+        ).expand(gather_idxs.shape[0])
+        # Because all the padded index's are 0's.
+        contact_matrix[0, 0] = 0.0
+        # print("bond_embedding:",self.bond_embedding(contact_matrix[:, :, None]).dtype)
+        # bonds_act = self.bond_embedding(contact_matrix[:, :, None])
+        # print(pair_activations.dtype)
+        return contact_matrix[:, :, None]
+
 
     def forward(self, batch: dict[str, torch.Tensor],target_feat) -> dict[str, torch.Tensor]:
         batch = feat_batch.Batch.from_data_dict(batch)
@@ -497,15 +461,15 @@ class EvoFormerOne():
                 [num_res, self.evoformer_seq_channel], dtype=torch.float32, device=target_feat.device,
             )
 
-        template_aatype = batch.templates.aatype
-        template_atom_positions = batch.templates.atom_positions
-        template_atom_mask = batch.templates.atom_mask
-        num_templates = template_aatype.shape[0]
-
-        # print(num_templates)
-
-        pseudo_beta_positions=torch.zeros(size=(num_templates,num_res,3))
-        pseudo_beta_mask=torch.zeros(size=(num_templates,num_res,3))
+        # template_aatype = batch.templates.aatype
+        # template_atom_positions = batch.templates.atom_positions
+        # template_atom_mask = batch.templates.atom_mask
+        # num_templates = template_aatype.shape[0]
+        #
+        # # print(num_templates)
+        #
+        # pseudo_beta_positions=torch.zeros(size=(num_templates,num_res,3))
+        # pseudo_beta_mask=torch.zeros(size=(num_templates,num_res,3))
 
         # for template_idx in range(num_templates):
         #     pb_position, pb_mask = scoring.pseudo_beta_fn(
@@ -514,14 +478,40 @@ class EvoFormerOne():
         #     pseudo_beta_positions[template_idx] = pb_position
         #     pseudo_beta_mask[template_idx] = pb_mask
 
-
+        contact_matrix=self.get_contact_matrix(
+            gather_idxs_polymer_ligand=batch.polymer_ligand_bond_info.tokens_to_polymer_ligand_bonds.gather_idxs,
+            tokens_to_polymer_ligand_bonds_gather_mask = batch.polymer_ligand_bond_info.tokens_to_polymer_ligand_bonds.gather_mask,
+            gather_idxs_ligand_ligand = batch.ligand_ligand_bond_info.tokens_to_ligand_ligand_bonds.gather_idxs,
+            tokens_to_ligand_ligand_bonds_gather_mask = batch.ligand_ligand_bond_info.tokens_to_ligand_ligand_bonds.gather_mask,
+            num_tokens=num_res,
+        )
+        # pt_path='/root/pycharm/calibration/1024.pt'
+        # torch.save({
+        #     'single': single,
+        #     'pair': pair,
+        #     'target_feat': target_feat,
+        #     'msa': batch.msa.rows,
+        #     'msa_mask': batch.msa.mask,
+        #     'deletion_matrix': batch.msa.deletion_matrix,
+        #     'token_index': batch.token_features.token_index,
+        #     'residue_index': batch.token_features.residue_index,
+        #     'asym_id': batch.token_features.asym_id,
+        #     'entity_id': batch.token_features.entity_id,
+        #     'sym_id': batch.token_features.sym_id,
+        #
+        #     'seq_mask': batch.token_features.mask,
+        #     'contact_matrix': contact_matrix,
+        #     'template_aatype': batch.templates.aatype,
+        #     'template_atom_positions': batch.templates.atom_positions,
+        #     'template_atom_mask': batch.templates.atom_mask,
+        # }, pt_path)
+        # print("success save calibration pt:",pt_path)
+        # exit(0)
+        print(contact_matrix.shape)
         # time1=time.time()
         for _ in range(self.num_recycles + 1):
         # for _ in range(0+1):
-            # ref:
-            # Number of recycles is number of additional forward trunk passes.
-            # num_iter = self.config.num_recycles + 1
-            # embeddings, _ = hk.fori_loop(0, num_iter, recycle_body, (embeddings, key))
+            time1=time.time()
             single,pair = self.evoformer(
                 single=single, pair=pair,
                 # single=embeddings['single'],pair=embeddings['pair'],
@@ -536,18 +526,19 @@ class EvoFormerOne():
                 asym_id = batch.token_features.asym_id,
                 entity_id = batch.token_features.entity_id,
                 sym_id = batch.token_features.sym_id,
-                seq_mask=batch.token_features.mask,
 
-                t_o_pol_idx=batch.polymer_ligand_bond_info.tokens_to_polymer_ligand_bonds.gather_idxs,
-                t_o_pol_mask = batch.polymer_ligand_bond_info.tokens_to_polymer_ligand_bonds.gather_mask,
-                t_o_lig_idxs = batch.ligand_ligand_bond_info.tokens_to_ligand_ligand_bonds.gather_idxs,
-                t_o_lig_masks = batch.ligand_ligand_bond_info.tokens_to_ligand_ligand_bonds.gather_mask,
+                seq_mask=batch.token_features.mask,
+                contact_matrix=contact_matrix,
+                # t_o_pol_idx=batch.polymer_ligand_bond_info.tokens_to_polymer_ligand_bonds.gather_idxs,
+                # t_o_pol_mask = batch.polymer_ligand_bond_info.tokens_to_polymer_ligand_bonds.gather_mask,
+                # t_o_lig_idxs = batch.ligand_ligand_bond_info.tokens_to_ligand_ligand_bonds.gather_idxs,
+                # t_o_lig_masks = batch.ligand_ligand_bond_info.tokens_to_ligand_ligand_bonds.gather_mask,
                 template_aatype = batch.templates.aatype,
                 template_atom_positions = batch.templates.atom_positions,
                 template_atom_mask = batch.templates.atom_mask,
                 # prev=embeddings,
-
             )
+            print("evo one cost time:", time.time()-time1)
         # print("dtype",c_pair.dtype,c_single.dtype)
         # print("shape",c_pair.shape,c_single.shape)
         # return embeddings
@@ -555,5 +546,148 @@ class EvoFormerOne():
             'single': single,
             'pair': pair,
             'target_feat': target_feat,
+        }
+        return output
+import openvino as ov
+import openvino.properties as properties
+class EvoformerVino():
+
+    def __init__(self):
+        super(EvoformerVino, self).__init__()
+        self.num_recycles = 10
+        self.evoformer_pair_channel = 128
+        self.evoformer_seq_channel = 384
+
+    def initOpenvinoModel(self,openvino_path):
+        self.core = ov.Core()
+        # self.core.set_property(
+        # "CPU",
+        #     {   properties.hint.execution_mode: properties.hint.ExecutionMode.PERFORMANCE,
+        #         },
+        #     )
+        # self.core.set_property("CPU",)
+        cpu_optimization_capabilities =self.core.get_property("CPU","OPTIMIZATION_CAPABILITIES")
+        print(cpu_optimization_capabilities)
+
+        # 加载模型
+        self.openvino = self.core.read_model(model=openvino_path)
+        # 编译模型
+        config = {
+            properties.hint.performance_mode: properties.hint.PerformanceMode.LATENCY,
+            properties.inference_num_threads: 120,
+            properties.hint.inference_precision: 'bf16',
+            properties.intel_cpu.denormals_optimization:True,
+            # properties.hint.ModelDistributionPolicy:"TENSOR_PARALLEL",
+            # properties.hint.enable_cpu_pinning(): False,
+            # properties.hint.execution_mode: properties.hint.ExecutionMode.PERFORMANCE,
+            # properties.hint.enable_hyper_threading(): False
+            # properties.num_streams:2,
+            # "CPU_THREADS_NUM": "60",
+            # "CPU_BIND_THREAD": "YES",
+        }
+        self.compiled_model = self.core.compile_model(
+            model=self.openvino,
+            device_name='CPU',
+            config=config,
+        )
+    def get_contact_matrix(
+        self,
+            gather_idxs_polymer_ligand,
+            tokens_to_polymer_ligand_bonds_gather_mask,
+            gather_idxs_ligand_ligand,
+            tokens_to_ligand_ligand_bonds_gather_mask,
+            num_tokens,
+            # pair_activations: torch.Tensor
+    ) -> torch.Tensor:
+        contact_matrix = torch.zeros(
+            (num_tokens, num_tokens), dtype=torch.float32)
+
+        gather_mask_polymer_ligand = tokens_to_polymer_ligand_bonds_gather_mask.prod(dim=1)[:, None]*gather_idxs_polymer_ligand
+
+        gather_mask_ligand_ligand = tokens_to_ligand_ligand_bonds_gather_mask.prod(dim=1)[:, None]*gather_idxs_ligand_ligand
+        gather_idxs = torch.concatenate(
+            [ gather_mask_polymer_ligand.to(dtype=torch.int64),
+            gather_mask_ligand_ligand.to(dtype=torch.int64)]
+        )
+        # print("gather_idxs",gather_idxs.shape,"contact_matrix",contact_matrix.shape)
+        # print(gather_idxs[:, 0].shape,gather_idxs[:, 1].shape)
+        contact_matrix[
+            gather_idxs[:, 0], gather_idxs[:, 1]
+        ] = 1.0
+        # print("after contact_matrix",contact_matrix.shape)
+        contact_matrix[
+            gather_idxs[:, 0], gather_idxs[:, 1]
+        ] = torch.tensor(
+            1.0,
+            dtype=contact_matrix.dtype,
+            device=contact_matrix.device
+        ).expand(gather_idxs.shape[0])
+        # Because all the padded index's are 0's.
+        contact_matrix[0, 0] = 0.0
+        return contact_matrix[:, :, None]
+
+    def forward(self, batch: dict[str, torch.Tensor], target_feat_t) -> dict[str, torch.Tensor]:
+        batch = feat_batch.Batch.from_data_dict(batch)
+        num_res = batch.num_res
+        # target_feat torch.Size([37, 447])
+
+        single=np.zeros(shape=[num_res, self.evoformer_seq_channel], dtype=np.float32)
+        pair=np.zeros(shape=[num_res, num_res, self.evoformer_pair_channel], dtype=np.float32)
+        target_feat=target_feat_t.numpy()
+        contact_matrix = self.get_contact_matrix(
+            gather_idxs_polymer_ligand=batch.polymer_ligand_bond_info.tokens_to_polymer_ligand_bonds.gather_idxs,
+            tokens_to_polymer_ligand_bonds_gather_mask=batch.polymer_ligand_bond_info.tokens_to_polymer_ligand_bonds.gather_mask,
+            gather_idxs_ligand_ligand=batch.ligand_ligand_bond_info.tokens_to_ligand_ligand_bonds.gather_idxs,
+            tokens_to_ligand_ligand_bonds_gather_mask=batch.ligand_ligand_bond_info.tokens_to_ligand_ligand_bonds.gather_mask,
+            num_tokens=num_res,
+        ).numpy()
+        kwarg_inputs = {
+
+            'target_feat': target_feat,
+            'msa': batch.msa.rows.numpy(),
+            'msa_mask': batch.msa.mask.numpy(),
+            'deletion_matrix': batch.msa.deletion_matrix.numpy(),
+            'token_index': batch.token_features.token_index.numpy(),
+            'residue_index': batch.token_features.residue_index.numpy(),
+            'asym_id': batch.token_features.asym_id.numpy(),
+            'entity_id': batch.token_features.entity_id.numpy(),
+            'sym_id': batch.token_features.sym_id.numpy(),
+
+            'seq_mask': batch.token_features.mask.numpy(),
+            'contact_matrix': contact_matrix,
+            'template_aatype': batch.templates.aatype.numpy(),
+            'template_atom_positions': batch.templates.atom_positions.numpy(),
+            'template_atom_mask': batch.templates.atom_mask.numpy(),
+        }
+        infer_request = self.compiled_model.create_infer_request()
+        single=ov.Tensor(single)
+        pair=ov.Tensor(pair)
+        # time1=time.time()
+        idx = 2
+        # 将数据填充到输入张量
+        for value in kwarg_inputs.values():
+            # input_names = input_key.names
+            # input_name = input_key.get_any_name()
+            # print("input_name", input_name," index" ,input_key.get_index())
+            ov_tensor = ov.Tensor(value)
+            # if input_name in inputs:
+            infer_request.set_input_tensor(idx, ov_tensor)
+            idx += 1
+        for _ in range(self.num_recycles + 1):
+            time1 = time.time()
+            infer_request.set_input_tensor(0, single)
+            infer_request.set_input_tensor(1,pair)
+            infer_request.infer()
+            single=infer_request.get_output_tensor(0)
+            pair=infer_request.get_output_tensor(1)
+            print('evo one cost time:', time.time()-time1)
+
+        # print("dtype",c_pair.dtype,c_single.dtype)
+        # print("shape",c_pair.shape,c_single.shape)
+        # return embeddings
+        output = {
+            'single': torch.from_numpy(single.data),
+            'pair': torch.from_numpy(pair.data),
+            'target_feat': target_feat_t,
         }
         return output
