@@ -57,6 +57,7 @@ SAVE_ONNX=False
 UseVino=False
 SAVE_EVO_ONNX=False
 USE_EVO_VINO=False
+SAVE_CONFIDENCE_ONNX=False
 USE_IPEX=True
 _HOME_DIR = pathlib.Path(os.environ.get('HOME'))
 DEFAULT_MODEL_DIR = _HOME_DIR / 'models/model_103275239_1'
@@ -261,7 +262,7 @@ class ModelRunner:
 
         self.confidence=ConfidenceOne()
         confidence_params.import_jax_weights_(self.confidence,model_dir)
-
+        self.confidence.confidence_head.eval()
         # Apply IPEX optimization for CPU if device is CPU
         if _CPU_INFERENCE.value:
             print("mkl",torch.backends.mkl.is_available(),"onednn",torch.backends.mkldnn.is_available())
@@ -275,6 +276,7 @@ class ModelRunner:
                 self.target_feat = ipex.optimize(self.target_feat,weights_prepack=False,optimize_lstm=True,auto_kernel_selection=True,dtype=torch.bfloat16)
                 self.evoformer.evoformer = ipex.optimize(self.evoformer.evoformer,weights_prepack=False,optimize_lstm=True,auto_kernel_selection=True,dtype=torch.bfloat16)
                 self.diffusion.diffusion_head = ipex.optimize(self.diffusion.diffusion_head,weights_prepack=False,optimize_lstm=True,auto_kernel_selection=True,dtype=torch.bfloat16)
+                self.confidence.confidence_head=ipex.optimize(self.confidence.confidence_head,weights_prepack=False,optimize_lstm=True,auto_kernel_selection=True,dtype=torch.bfloat16)
                 # opts = {"device": "CPU", "config": {"PERFORMANCE_HINT": "LATENCY"}, "model_caching" : True,"cache_dir": "./model_cache"}
                 # self.diffusion.diffusion_head=torch.compile(self.diffusion.diffusion_head,backend="openvino",options=opts)
                 # self.evoformer.evoformer=torch.compile(self.evoformer.evoformer, backend="openvino",dynamic=True)
@@ -394,8 +396,14 @@ class ModelRunner:
                 # with torch.amp.autocast(device_type="cpu", dtype=torch.bfloat16):
                 #     print(positions[0][0])
                 #     confidence_out=self.confidence
-                    result=self._model(featurised_example,embeddings,positions)
+                    confidence_output,samples=self.confidence.forward(batch=featurised_example,embeddings=embeddings,positions=positions)
 
+                    distogram=self._model(featurised_example,embeddings,positions)
+                    result={
+                            'diffusion_samples': samples,
+                            'distogram': distogram,
+                            **confidence_output,
+                    }
                     # if torch.allclose(result, target_feat, rtol=1e-5):
                     #     print("target_feat 张量没有变化")
                     # else:

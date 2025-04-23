@@ -100,7 +100,6 @@ class PairformerBlock(nn.Module):
                 self.single_pair_logits_norm(pair))
 
             pair_logits = pair_logits.permute(2, 0, 1)
-
             single += self.single_attention_(single,
                                              seq_mask,
                                              pair_logits=pair_logits)

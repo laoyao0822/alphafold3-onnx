@@ -142,7 +142,8 @@ class ConfidenceHead(nn.Module):
     def _embed_features(
         self,
         dense_atom_positions: torch.Tensor,
-        token_atoms_to_pseudo_beta: atom_layout.GatherInfo,
+        ta_to_pb_gather_idxs,
+        ta_to_pb_gather_mask,
         pair_mask: torch.Tensor,
         target_feat: torch.Tensor,
     ) -> torch.Tensor:
@@ -150,11 +151,13 @@ class ConfidenceHead(nn.Module):
         out = self.left_target_feat_project(target_feat)[..., None, :, :] \
             + self.right_target_feat_project(target_feat)[..., None, :]
 
-        positions = atom_layout.convert(
-            token_atoms_to_pseudo_beta,
-            dense_atom_positions,
-            layout_axes=(-3, -2),
-        )
+        # positions = atom_layout.convert(
+        #     token_atoms_to_pseudo_beta,
+        #     dense_atom_positions,
+        #     layout_axes=(-3, -2),
+        # )
+        positions=atom_layout.convertV2(ta_to_pb_gather_idxs,ta_to_pb_gather_mask,
+                                        dense_atom_positions,layout_axes=(-3, -2))
         dgram = self.dgram_from_positions(
             positions
         )
@@ -168,11 +171,17 @@ class ConfidenceHead(nn.Module):
     def forward(
         self,
         dense_atom_positions: torch.Tensor,
-        embeddings: dict[str, torch.Tensor],
+        # embeddings: dict[str, torch.Tensor],
+        single,
+        pair,
+        # pair,
+        target_feat: torch.Tensor,
         seq_mask: torch.Tensor,
-        token_atoms_to_pseudo_beta: atom_layout.GatherInfo,
+        # token_atoms_to_pseudo_beta: atom_layout.GatherInfo,
+        ta_to_pb_gather_idxs,
+        ta_to_pb_gather_mask,
         asym_id: torch.Tensor
-    ) -> dict[str, torch.Tensor]:
+    ) :
         """
         Args:
             target_feat (torch.Tensor): single embedding from InputFeatureEmbedder
@@ -183,19 +192,20 @@ class ConfidenceHead(nn.Module):
                 [..., N_token, N_token]
             token_atoms_to_pseudo_beta (atom_layout.GatherInfo): Pseudo beta info for atom tokens.
         """
-
+        print("ta_to_pb_gather_idxs", ta_to_pb_gather_idxs.shape)
+        print("ta_to_pb_gather_mask", ta_to_pb_gather_mask.shape)
         dtype = dense_atom_positions.dtype
 
         seq_mask_cast = seq_mask.to(dtype=dtype)
         pair_mask = seq_mask_cast[:, None] * seq_mask_cast[None, :]
         pair_mask = pair_mask.to(dtype=dtype)
 
-        pair_act = embeddings['pair'].clone().to(dtype=dtype)
-        single_act = embeddings['single'].clone().to(dtype=dtype)
-        target_feat = embeddings['target_feat'].clone().to(dtype=dtype)
+        pair_act = pair.to(dtype=dtype)
+        single_act = single.to(dtype=dtype)
+        # target_feat = embeddings['target_feat'].clone().to(dtype=dtype)\
 
         pair_act += self._embed_features(
-            dense_atom_positions, token_atoms_to_pseudo_beta, pair_mask, target_feat)
+            dense_atom_positions, ta_to_pb_gather_idxs,ta_to_pb_gather_mask, pair_mask, target_feat)
 
         # pairformer stack
         for layer in self.confidence_pairformer:
@@ -220,7 +230,7 @@ class ConfidenceHead(nn.Module):
         ) / torch.sum(pair_mask, dim=[-2, -1])
 
         # Predicted aligned error
-        pae_outputs = {}
+        # pae_outputs = {}
         pae_logits = self.pae_logits(self.pae_logits_ln(pair_act))
         pae_probs = torch.softmax(pae_logits, dim=-1)
 
@@ -228,9 +238,10 @@ class ConfidenceHead(nn.Module):
 
         pae = torch.sum(pae_probs * self.pae_bin_centers,
                         dim=-1) * pair_mask_bool
-        pae_outputs.update({
-            'full_pae': pae,
-        })
+        # pae_outputs.update({
+        #     'full_pae': pae,
+        # })
+        # full_pae=pae
 
         tmscore_adjusted_pae_global, tmscore_adjusted_pae_interface = (
             self._get_tmscore_adjusted_pae(
@@ -242,10 +253,10 @@ class ConfidenceHead(nn.Module):
             )
         )
 
-        pae_outputs.update({
-            'tmscore_adjusted_pae_global': tmscore_adjusted_pae_global,
-            'tmscore_adjusted_pae_interface': tmscore_adjusted_pae_interface,
-        })
+        # pae_outputs.update({
+        #     'tmscore_adjusted_pae_global': tmscore_adjusted_pae_global,
+        #     'tmscore_adjusted_pae_interface': tmscore_adjusted_pae_interface,
+        # })
 
         # pLDDT
         plddt_logits = self.plddt_logits(self.plddt_logits_ln(single_act))
@@ -266,13 +277,16 @@ class ConfidenceHead(nn.Module):
             experimentally_resolved_logits, dim=-1
         )[..., 1]
 
-        return {
-            'predicted_lddt': predicted_lddt,
-            'predicted_experimentally_resolved': predicted_experimentally_resolved,
-            'full_pde': pred_distance_error,
-            'average_pde': average_pred_distance_error,
-            **pae_outputs,
-        }
+        return (predicted_lddt,predicted_experimentally_resolved,pred_distance_error,average_pred_distance_error,
+                pae,tmscore_adjusted_pae_global,tmscore_adjusted_pae_interface)
+
+        # return {
+        #     'predicted_lddt': predicted_lddt,
+        #     'predicted_experimentally_resolved': predicted_experimentally_resolved,
+        #     'full_pde': pred_distance_error,
+        #     'average_pde': average_pred_distance_error,
+        #     **pae_outputs,
+        # }
 
     def _get_tmscore_adjusted_pae(self,
                                   asym_id: torch.Tensor,

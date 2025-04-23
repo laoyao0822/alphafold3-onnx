@@ -23,7 +23,6 @@ class ConfidenceOne():
         self.confidence_head = ConfidenceHead()
         self.num_samples=5
 
-
     def forward(self, batch: dict[str, torch.Tensor]
                 ,embeddings,positions
                 ) :
@@ -38,17 +37,40 @@ class ConfidenceOne():
         print("positions shape:",positions.shape)
         for sample_dense_atom_position in samples['atom_positions']:
             print("sample_dense_atom_position", sample_dense_atom_position.shape)
-            confidence_output_per_sample.append(self.confidence_head(
+            (predicted_lddt,predicted_experimentally_resolved,full_pde,average_pde,
+             full_pae,tmscore_adjusted_pae_global,tmscore_adjusted_pae_interface)=self.confidence_head(
                 dense_atom_positions=sample_dense_atom_position,
-                embeddings=embeddings,
+                # embeddings=embeddings,
+                single=embeddings['single'],
+                pair=embeddings['pair'],
+                target_feat=embeddings['target_feat'],
                 seq_mask=batch.token_features.mask,
-                token_atoms_to_pseudo_beta=batch.pseudo_beta_info.token_atoms_to_pseudo_beta,
+                # token_atoms_to_pseudo_beta=batch.pseudo_beta_info.token_atoms_to_pseudo_beta,
+                ta_to_pb_gather_idxs=batch.pseudo_beta_info.token_atoms_to_pseudo_beta.gather_idxs,
+                ta_to_pb_gather_mask=batch.pseudo_beta_info.token_atoms_to_pseudo_beta.gather_mask,
                 asym_id=batch.token_features.asym_id
-            ))
+            )
+            # print("predicted_lddt:",predicted_lddt.shape)
+            # print("predicted_experimentally_resolved:",predicted_experimentally_resolved.shape)
+            # print("full_pde:",full_pde.shape)
+            # print("average_pde:",average_pde.shape)
+            # print("full_pae:",full_pae.shape)
+            # print("tmscore_adjusted_pae_global:",tmscore_adjusted_pae_global.shape)
+            # print("tmscore_adjusted_pae_interface:",tmscore_adjusted_pae_interface.shape)
+            confidence_putput={
+                'predicted_lddt': predicted_lddt,
+                'predicted_experimentally_resolved': predicted_experimentally_resolved,
+                'full_pde': full_pde,
+                'average_pde': average_pde,
+                'full_pae':full_pae,
+                'tmscore_adjusted_pae_global': tmscore_adjusted_pae_global,
+                'tmscore_adjusted_pae_interface': tmscore_adjusted_pae_interface
+            }
+            confidence_output_per_sample.append(confidence_putput)
         print("confidence_head cost time:",time.time()-time2)
-        print("confidence_output_per_sample:",confidence_output_per_sample[0].shape)
+        # print("confidence_output_per_sample:",confidence_output_per_sample[0].shape)
         confidence_output = {}
         for key in confidence_output_per_sample[0]:
             confidence_output[key] = torch.stack(
                 [sample[key] for sample in confidence_output_per_sample], dim=0)
-        return confidence_output
+        return confidence_output,samples

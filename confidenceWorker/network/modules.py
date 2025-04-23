@@ -88,27 +88,7 @@ class TriangleMultiplication(nn.Module):
         pair *= torch.sigmoid(gate_out)
 
         return pair
-    
-# ref:
-# class OuterProductMean(hk.Module):
-#   """Computed mean outer product."""
 
-#   class Config(base_config.BaseConfig):
-#     chunk_size: int = 128
-#     num_outer_channel: int = 32
-
-#   def __init__(
-#       self,
-#       config: Config,
-#       global_config: model_config.GlobalConfig,
-#       num_output_channel,
-#       *,
-#       name,
-#   ):
-#     super().__init__(name=name)
-#     self.global_config = global_config
-#     self.config = config
-#     self.num_output_channel = num_output_channel
 
 class OuterProductMean(nn.Module):
     def __init__(self, c_msa: int = 64, num_output_channel: int = 128, num_outer_channel: int = 32) -> None:
@@ -143,63 +123,6 @@ class OuterProductMean(nn.Module):
 
         norm = torch.einsum('abc,adc->bdc', mask, mask)
         return act / (self.epsilon + norm)
-
-#   def __call__(self, act, mask):
-#     mask = mask[..., None]
-#     act = hm.LayerNorm(name='layer_norm_input')(act)
-
-#     left_act = mask * hm.Linear(
-#         self.config.num_outer_channel,
-#         initializer='linear',
-#         name='left_projection',
-#     )(act)
-
-#     right_act = mask * hm.Linear(
-#         self.config.num_outer_channel,
-#         initializer='linear',
-#         name='right_projection',
-#     )(act)
-
-#     if self.global_config.final_init == 'zeros':
-#       w_init = hk.initializers.Constant(0.0)
-#     else:
-#       w_init = hk.initializers.VarianceScaling(scale=2.0, mode='fan_in')
-
-#     output_w = hk.get_parameter(
-#         'output_w',
-#         shape=(
-#             self.config.num_outer_channel,
-#             self.config.num_outer_channel,
-#             self.num_output_channel,
-#         ),
-#         dtype=act.dtype,
-#         init=w_init,
-#     )
-#     output_b = hk.get_parameter(
-#         'output_b',
-#         shape=(self.num_output_channel,),
-#         dtype=act.dtype,
-#         init=hk.initializers.Constant(0.0),
-#     )
-
-#     def compute_chunk(left_act):
-#       # Make sure that the 'b' dimension is the most minor batch like dimension
-#       # so it will be treated as the real batch by XLA (both during the forward
-#       # and the backward pass)
-#       left_act = jnp.transpose(left_act, [0, 2, 1])
-#       act = jnp.einsum('acb,ade->dceb', left_act, right_act)
-#       act = jnp.einsum('dceb,cef->dbf', act, output_w) + output_b
-#       return jnp.transpose(act, [1, 0, 2])
-
-#     act = mapping.inference_subbatch(
-#         compute_chunk,
-#         self.config.chunk_size,
-#         batched_args=[left_act],
-#         nonbatched_args=[],
-#         input_subbatch_dim=1,
-#         output_subbatch_dim=0,
-#         input_subbatch_dim_is_partitioned=False,
-#     )
 
 
 class Transition(nn.Module):

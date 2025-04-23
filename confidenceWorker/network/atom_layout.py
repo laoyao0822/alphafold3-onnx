@@ -16,6 +16,59 @@ from collections.abc import Sequence
 import numpy as np
 import torch
 
+def convertV2(
+    gather_idxs,gather_mask,
+    arr: torch.Tensor,
+    *,
+    layout_axes: tuple[int, ...] = (0,),
+) -> torch.Tensor:
+    """Convert an array from one atom layout to another."""
+    # Translate negative indices to the corresponding positives.
+    layout_axes = tuple(i if i >= 0 else i + arr.ndim for i in layout_axes)
+    # print("covert")
+    # Ensure that layout_axes are continuous.
+    layout_axes_begin = layout_axes[0]
+    layout_axes_end = layout_axes[-1] + 1
+
+    if layout_axes != tuple(range(layout_axes_begin, layout_axes_end)):
+        raise ValueError(f'layout_axes must be continuous. Got {layout_axes}.')
+    # layout_shape = arr.shape[layout_axes_begin:layout_axes_end]
+
+
+    # Compute the shape of the input array with flattened layout.
+    batch_shape = arr.shape[:layout_axes_begin]
+    features_shape = arr.shape[layout_axes_end:]
+    prod_dim = 1
+    for dim in arr.shape[layout_axes_begin:layout_axes_end]:
+        prod_dim *= dim
+    # arr_flattened_shape = batch_shape + (torch.prod(torch.tensor(layout_shape)).item(),) + features_shape
+    arr_flattened_shape = batch_shape + (prod_dim,) + features_shape
+    # Flatten input array and perform the gather.
+    arr_flattened = arr.reshape(arr_flattened_shape)
+    if layout_axes_begin == 0:
+        out_arr = arr_flattened[gather_idxs, ...]
+    elif layout_axes_begin == 1:
+        out_arr = arr_flattened[:, gather_idxs, ...]
+    elif layout_axes_begin == 2:
+        out_arr = arr_flattened[:, :, gather_idxs, ...]
+    elif layout_axes_begin == 3:
+        out_arr = arr_flattened[:, :, :, gather_idxs, ...]
+    elif layout_axes_begin == 4:
+        out_arr = arr_flattened[:, :, :, :,gather_idxs, ...]
+    else:
+        raise ValueError(
+            'Only 4 batch axes supported. If you need more, the code '
+            'is easy to extend.'
+        )
+    # Broadcast the mask and apply it.
+
+    broadcasted_mask_shape = (
+        (1,) * len(batch_shape)
+        + gather_mask.shape
+        + (1,) * len(features_shape)
+    )
+    out_arr *= gather_mask.reshape(broadcasted_mask_shape)
+    return out_arr
 
 @dataclasses.dataclass(frozen=True)
 class GatherInfo:

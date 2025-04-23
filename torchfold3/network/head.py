@@ -60,7 +60,7 @@ class DistogramHead(nn.Module):
         self,
         batch: feat_batch.Batch,
         embeddings: dict[str, torch.Tensor]
-    ) -> torch.Tensor:
+    ) :
         """
         Args:
             pair (torch.Tensor): pair embedding
@@ -80,7 +80,6 @@ class DistogramHead(nn.Module):
         logits = left_half_logits + right_half_logits.transpose(-2, -3)
         probs = torch.softmax(logits, dim=-1)
         contact_probs = torch.einsum('ijk,k->ij', probs, self.is_contact_bin)
-
         contact_probs = pair_mask * contact_probs
 
         return {

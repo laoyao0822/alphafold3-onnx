@@ -499,46 +499,46 @@ class AlphaFold3(nn.Module):
         #     dist.send(tensor=c_pair, dst=send_rank)
         #     dist.send(tensor=c_single, dst=send_rank)
 
-        sample_mask = batch.predicted_structure_info.atom_mask
-        # samples = self._sample_diffusion(batch, embeddings)
-        final_dense_atom_mask = torch.tile(sample_mask[None], (self.num_samples, 1, 1))
-        samples={'atom_positions': positions, 'mask': final_dense_atom_mask}
-        time2=time.time()
-        confidence_output_per_sample = []
-        print("positions shape:",positions.shape)
-        positions_c=positions.clone()
-        for sample_dense_atom_position in samples['atom_positions']:
-            print("sample_dense_atom_position", sample_dense_atom_position.shape)
-            confidence_output_per_sample.append(self.confidence_head(
-                dense_atom_positions=sample_dense_atom_position,
-                embeddings=embeddings,
-                seq_mask=batch.token_features.mask,
-                token_atoms_to_pseudo_beta=batch.pseudo_beta_info.token_atoms_to_pseudo_beta,
-                asym_id=batch.token_features.asym_id
-            ))
-        print("confidence_head cost time:",time.time()-time2)
+        # sample_mask = batch.predicted_structure_info.atom_mask
+        # # samples = self._sample_diffusion(batch, embeddings)
+        # final_dense_atom_mask = torch.tile(sample_mask[None], (self.num_samples, 1, 1))
+        # samples={'atom_positions': positions, 'mask': final_dense_atom_mask}
+        # time2=time.time()
+        # confidence_output_per_sample = []
+        # print("positions shape:",positions.shape)
+        # positions_c=positions.clone()
+        # for sample_dense_atom_position in samples['atom_positions']:
+        #     print("sample_dense_atom_position", sample_dense_atom_position.shape)
+        #     confidence_output_per_sample.append(self.confidence_head(
+        #         dense_atom_positions=sample_dense_atom_position,
+        #         embeddings=embeddings,
+        #         seq_mask=batch.token_features.mask,
+        #         token_atoms_to_pseudo_beta=batch.pseudo_beta_info.token_atoms_to_pseudo_beta,
+        #         asym_id=batch.token_features.asym_id
+        #     ))
+        # print("confidence_head cost time:",time.time()-time2)
         # print("confidence_output_per_sample:",confidence_output_per_sample[0].shape)
         confidence_output = {}
-        for key in confidence_output_per_sample[0]:
-            confidence_output[key] = torch.stack(
-                [sample[key] for sample in confidence_output_per_sample], dim=0)
-
-        if torch.allclose(positions_c, positions, rtol=1e-5):
-            print("positions 张量没有变化")
-        else:
-            print("positions_c 张量发生了变化")
+        # for key in confidence_output_per_sample[0]:
+        #     confidence_output[key] = torch.stack(
+        #         [sample[key] for sample in confidence_output_per_sample], dim=0)
+        #
+        # if torch.allclose(positions_c, positions, rtol=1e-5):
+        #     print("positions 张量没有变化")
+        # else:
+        #     print("positions_c 张量发生了变化")
         # exit(0)
 
         distogram = self.distogram_head(batch, embeddings)
-
+        return distogram
 
         # if torch.allclose(target_feat_clone, embeddings['target_feat'], rtol=1e-5):
         #     print("target_feat 张量没有变化")
         # else:
         #     print("target_feat 张量发生了变化")
 
-        return {
-            'diffusion_samples': samples,
-            'distogram': distogram,
-            **confidence_output,
-        }
+        # return {
+        #     'diffusion_samples': samples,
+        #     'distogram': distogram,
+        #     **confidence_output,
+        # }
