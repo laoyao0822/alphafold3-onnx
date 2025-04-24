@@ -13,8 +13,9 @@ import einops
 import torch
 import torch.nn as nn
 
-from torchfold3.network.layer_norm import LayerNorm
-from torchfold3.network.dot_product_attention import dot_product_attention
+from torch.nn import LayerNorm
+from evoformer.network.dot_product_attention import dot_product_attention
+# from evoformer.network.dot_product_attention import dot_product_attention_flex
 import torch.distributed as dist
 import torchfold3.config as config
 import time
@@ -156,6 +157,7 @@ import time
 #         return pair
 
 
+from evoformer.network.dot_product_attention import dot_product_attention_sdpa
 
 class GridSelfAttention(nn.Module):
 
@@ -178,7 +180,7 @@ class GridSelfAttention(nn.Module):
         self.gating_query = nn.Linear(self.c_pair, self.c_pair, bias=False)
         self.output_projection = nn.Linear(
             self.c_pair, self.c_pair, bias=False)
-    def _attention(self, pair: torch.Tensor, mask: torch.Tensor):
+    def _attention(self, pair: torch.Tensor, mask=None,attn_mask=None) -> torch.Tensor:
 
         q = self.q_projection(pair)
         k = self.k_projection(pair)
@@ -188,35 +190,27 @@ class GridSelfAttention(nn.Module):
         q, k, v = map(lambda t: einops.rearrange(
             t, 'b n (h d) -> b h n d', h=self.num_head), [q, k, v])
         bias = self.pair_bias_projection(pair).permute(2, 0, 1)
+        # print("mask bias",mask.shape,bias.shape)
 
-        weighted_avg = dot_product_attention(q, k, v,
+        if attn_mask is not None:
+            weighted_avg=dot_product_attention_sdpa(q, k, v, attn_mask=attn_mask,bias=bias)
+        else:
+            weighted_avg = dot_product_attention(q, k, v,
                                               mask=mask,
                                               bias=bias)
+
+
         batch_size, num_heads, seq_len, head_dim = weighted_avg.size()
         # weighted_avg1 shape torch.Size([107, 107, 64]) weighted_avg2 shape torch.Size([107, 107, 64])
         weighted_avg = weighted_avg.permute(0, 2, 1, 3).contiguous().view(batch_size, seq_len, -1)
-        # 优化门控计算
+
         gate = torch.sigmoid(self.gating_query(pair))
         weighted_avg.mul_(gate)
 
         return self.output_projection(weighted_avg)
-        # weighted_avg = einops.rearrange(weighted_avg, 'b h n d -> b n (h d)')
-
-        # gate_values = self.gating_query(pair)
-        #
-        # # print("gate_values1 shape",gate_values1.shape,"gate_values2 shape",gate_values2.shape)
-        #
-        # weighted_avg *= torch.sigmoid(gate_values)
-        #
-        #
-        # out_proj = self.output_projection(weighted_avg)
-        #
-        # return out_proj
 
 
-
-
-    def forward(self, pair, mask):
+    def forward(self, pair, mask=None,attn_mask=None):
         """
         Args:
             pair (torch.Tensor): [N_token, N_token, c_pair]
@@ -229,10 +223,9 @@ class GridSelfAttention(nn.Module):
         if self.transpose:
             pair = pair.permute(1, 0, 2)
 
-        pair = self._attention(pair, mask).contiguous()
+        pair = self._attention(pair, mask=mask,attn_mask=attn_mask).contiguous()
         # if self.c_pair==128:
         #     print("attention time:",time.time()-time1)
-
         if self.transpose:
             pair = pair.permute(1, 0, 2)
         return pair

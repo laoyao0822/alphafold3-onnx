@@ -192,8 +192,8 @@ class ConfidenceHead(nn.Module):
                 [..., N_token, N_token]
             token_atoms_to_pseudo_beta (atom_layout.GatherInfo): Pseudo beta info for atom tokens.
         """
-        print("ta_to_pb_gather_idxs", ta_to_pb_gather_idxs.shape)
-        print("ta_to_pb_gather_mask", ta_to_pb_gather_mask.shape)
+        # print("ta_to_pb_gather_idxs", ta_to_pb_gather_idxs.shape)
+        # print("ta_to_pb_gather_mask", ta_to_pb_gather_mask.shape)
         dtype = dense_atom_positions.dtype
 
         seq_mask_cast = seq_mask.to(dtype=dtype)

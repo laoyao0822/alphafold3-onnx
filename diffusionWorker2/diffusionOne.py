@@ -449,7 +449,7 @@ class diffusion():
         pair_c = pair
         target_feat_c = target_feat
 
-        print("diffusion2 start sample diffusion", positions.shape)
+        # print("diffusion2 start sample diffusion", positions.shape)
 
         for step_idx in range(self.diffusion_steps):
             positions = self._apply_denoising_step(

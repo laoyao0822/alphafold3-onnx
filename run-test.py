@@ -56,7 +56,7 @@ DIFFUSION_ONNX=False
 SAVE_ONNX=False
 UseVino=False
 SAVE_EVO_ONNX=False
-USE_EVO_VINO=False
+USE_EVO_VINO= False
 SAVE_CONFIDENCE_ONNX=False
 USE_IPEX=True
 _HOME_DIR = pathlib.Path(os.environ.get('HOME'))
@@ -113,7 +113,7 @@ _CPU_INFERENCE = flags.DEFINE_bool(
 # control the number of threads used by the data pipeline.
 _NUM_THREADS = flags.DEFINE_integer(
     'num_cpu_threads',
-    59,
+    119,
     'Number of threads to use for the data pipeline.',
 )
 
@@ -275,7 +275,9 @@ class ModelRunner:
 
                 self.target_feat = ipex.optimize(self.target_feat,weights_prepack=False,optimize_lstm=True,auto_kernel_selection=True,dtype=torch.bfloat16)
                 self.evoformer.evoformer = ipex.optimize(self.evoformer.evoformer,weights_prepack=False,optimize_lstm=True,auto_kernel_selection=True,dtype=torch.bfloat16)
+                # self.evoformer.evoformer = torch.compile(self.evoformer.evoformer, backend="ipex")
                 self.diffusion.diffusion_head = ipex.optimize(self.diffusion.diffusion_head,weights_prepack=False,optimize_lstm=True,auto_kernel_selection=True,dtype=torch.bfloat16)
+                # self.diffusion.diffusion_head=torch.compile(self.diffusion.diffusion_head,backend="ipex")
                 self.confidence.confidence_head=ipex.optimize(self.confidence.confidence_head,weights_prepack=False,optimize_lstm=True,auto_kernel_selection=True,dtype=torch.bfloat16)
                 # opts = {"device": "CPU", "config": {"PERFORMANCE_HINT": "LATENCY"}, "model_caching" : True,"cache_dir": "./model_cache"}
                 # self.diffusion.diffusion_head=torch.compile(self.diffusion.diffusion_head,backend="openvino",options=opts)
@@ -323,7 +325,7 @@ class ModelRunner:
 
         else: # CPU Inference
             if _CPU_AMP_OPT:
-                with torch.amp.autocast(device_type="cpu", dtype=torch.bfloat16):
+                with torch.amp.autocast("cpu", dtype=torch.bfloat16):
                     print("Running inference with AMP on CPU...")
                     # self._model=torch.jit.trace(self._model,featurised_example)
                     # result = self._model(featurised_example)

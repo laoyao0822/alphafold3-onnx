@@ -34,9 +34,9 @@ class ConfidenceOne():
         samples={'atom_positions': positions, 'mask': final_dense_atom_mask}
         time2=time.time()
         confidence_output_per_sample = []
-        print("positions shape:",positions.shape)
+        # print("positions shape:",positions.shape)
         for sample_dense_atom_position in samples['atom_positions']:
-            print("sample_dense_atom_position", sample_dense_atom_position.shape)
+            # print("sample_dense_atom_position", sample_dense_atom_position.shape)
             (predicted_lddt,predicted_experimentally_resolved,full_pde,average_pde,
              full_pae,tmscore_adjusted_pae_global,tmscore_adjusted_pae_interface)=self.confidence_head(
                 dense_atom_positions=sample_dense_atom_position,

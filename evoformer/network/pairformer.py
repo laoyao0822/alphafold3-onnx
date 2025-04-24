@@ -91,8 +91,10 @@ class PairformerBlock(nn.Module):
         """
         pair += self.triangle_multiplication_outgoing(pair, mask=pair_mask)
         pair += self.triangle_multiplication_incoming(pair, mask=pair_mask)
+        print("pairformer pair--------------",)
         pair += self.pair_attention1(pair, mask=pair_mask)
         pair += self.pair_attention2(pair, mask=pair_mask)
+        print("pairformer pair end-------------------")
         pair += self.pair_transition(pair)
 
         if self.with_single is True:
@@ -135,15 +137,20 @@ class EvoformerBlock(nn.Module):
         msa: torch.Tensor,
         pair: torch.Tensor,
         msa_mask: torch.Tensor,
-        pair_mask: torch.Tensor
+        pair_mask: torch.Tensor,
+        pair_mask_attn:torch.Tensor,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         pair += self.outer_product_mean(msa, msa_mask)
         msa += self.msa_attention1(msa, msa_mask, pair)
         msa += self.msa_transition(msa)
         pair += self.triangle_multiplication_outgoing(pair, mask=pair_mask)
         pair += self.triangle_multiplication_incoming(pair, mask=pair_mask)
-        pair += self.pair_attention1(pair, mask=pair_mask)
-        pair += self.pair_attention2(pair, mask=pair_mask)
+        print("evoformer pair-------------------")
+        # pair += self.pair_attention1(pair, mask=pair_mask)
+        # pair += self.pair_attention2(pair, mask=pair_mask)
+        pair +=self.pair_attention1(pair,attn_mask=pair_mask_attn)
+        pair += self.pair_attention2(pair, attn_mask=pair_mask_attn)
+        print("evoformer end-------------")
         pair += self.pair_transition(pair)
 
         return msa, pair

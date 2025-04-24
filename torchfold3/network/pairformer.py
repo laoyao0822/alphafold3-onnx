@@ -145,7 +145,7 @@ class EvoformerBlock(nn.Module):
 
         pair += self.triangle_multiplication_outgoing(pair, mask=pair_mask)
         pair += self.triangle_multiplication_incoming(pair, mask=pair_mask)
-        pair += self.pair_attention1(pair, mask=pair_mask)
+        pair += self.pair_attention1(pair, mask=pair_mask,)
         pair += self.pair_attention2(pair, mask=pair_mask)
         pair += self.pair_transition(pair)
 

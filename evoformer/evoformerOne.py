@@ -21,6 +21,7 @@ from evoformer.network.template import TemplateEmbedding
 # from evoformer.network import atom_cross_attention
 from alphafold3.constants import residue_names
 from evoformer.misc import protein_data_processing
+from evoformer.network.dot_product_attention import get_attn_mask
 
 class Evoformer(nn.Module):
     def __init__(self, msa_channel: int = 64):
@@ -178,7 +179,8 @@ class Evoformer(nn.Module):
         rows, mask, deletion_matrix,
         pair_activations: torch.Tensor,
         pair_mask: torch.Tensor,
-        target_feat: torch.Tensor
+        target_feat: torch.Tensor,
+        pair_mask_attn: torch.Tensor,
     ) -> torch.Tensor:
         """Processes MSA and returns updated pair activations."""
         dtype = pair_activations.dtype
@@ -196,6 +198,7 @@ class Evoformer(nn.Module):
         msa_activations = self.msa_activations(msa_feat)
         msa_activations += self.extra_msa_target_feat(target_feat)[None]
 
+
         # Evoformer MSA stack.
         for msa_block in self.msa_stack:
             msa_activations, pair_activations = msa_block(
@@ -203,6 +206,7 @@ class Evoformer(nn.Module):
                 pair=pair_activations,
                 msa_mask=msa_mask,
                 pair_mask=pair_mask,
+                pair_mask_attn=pair_mask_attn,
             )
 
         return pair_activations
@@ -232,7 +236,8 @@ class Evoformer(nn.Module):
 
         pair_activations += self.prev_embedding(
             self.prev_embedding_layer_norm(pair))
-
+        attn_mask_4=get_attn_mask(mask=pair_mask,dtype=pair_activations.dtype,device=pair_activations.device,batch_size=num_tokens,
+                                  num_heads=4,seq_len=num_tokens)
         # pair_activations = self._relative_encoding(batch, pair_activations)
         pair_activations=self._relative_encoding(token_index=token_index,
                                                  residue_index=residue_index,
@@ -251,6 +256,8 @@ class Evoformer(nn.Module):
         pair_activations+=self.bond_embedding(contact_matrix)
 
         single_activations = self.single_activations(target_feat)
+        pair_mask_c=pair_mask.clone()
+
         single_activations += self.prev_single_embedding(
             self.prev_single_embedding_layer_norm(single))
 
@@ -261,22 +268,29 @@ class Evoformer(nn.Module):
             pair_activations=pair_activations,
             pair_mask=pair_mask,
         )
+        # assert torch.allclose(pair_mask_c, pair_mask, atol=1e-2, rtol=1e-2), "输出不一致！"
 
+        print("_embed_template_pair over")
         pair_activations = self._embed_process_msa(
             # msa_batch=batch.msa,
             msa, msa_mask, deletion_matrix,
             pair_activations=pair_activations,
             pair_mask=pair_mask,
             target_feat=target_feat,
+            pair_mask_attn=attn_mask_4,
         )
+        # assert torch.allclose(pair_mask_c, pair_mask, atol=1e-2, rtol=1e-2), "输出不一致！"
 
-
-
+        print("_embed_process_msa over")
         for pairformer_b in self.trunk_pairformer:
             pair_activations, single_activations = pairformer_b(
                 pair_activations, pair_mask, single_activations, seq_mask)
+        # assert torch.allclose(pair_mask_c, pair_mask, atol=1e-2, rtol=1e-2), "输出不一致！"
+
         # if torch.allclose(target_feat,target_feat_c,1e-5):
         #     print("target feat  not change")
+        print("_pairformer_b over")
+        # exit(0)
 
         # output = {
         #     'single': single_activations,
@@ -539,6 +553,7 @@ class EvoFormerOne():
                 # prev=embeddings,
             )
             print("evo one cost time:", time.time()-time1)
+            # exit(0)
         # print("dtype",c_pair.dtype,c_single.dtype)
         # print("shape",c_pair.shape,c_single.shape)
         # return embeddings
