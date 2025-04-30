@@ -20,8 +20,11 @@ from diffusionWorker2.network import atom_layout
 # from diffusionWorker2.network.layer_norm import LayerNorm
 from torch.nn import LayerNorm
 
+from diffusionWorker2.network.dot_product_attention import dot_product_attention
 from diffusionWorker2.network.gated_linear_unit import gated_linear_unit
 # from diffusionWorker2.network.dot_product_attention import dot_product_attention
+from diffusionWorker2.network.dot_product_attention import dot_product_attention_sdpa
+
 
 
 
@@ -156,26 +159,7 @@ class SelfAttention(nn.Module):
         self.adaptive_zero_init = AdaLNZero(
             self.c_x, self.c_x, self.c_single_cond, self.use_single_cond)
 
-    def dot_product_attention(self,q: torch.Tensor,
-                                    k: torch.Tensor,
-                                    v: torch.Tensor,
-                                    mask: Optional[torch.Tensor] = None,
-                                    bias: Optional[torch.Tensor] = None):
-        mask = mask[None, None, None, :].to(dtype=torch.bool)
-        # scaling = self.head_dim ** -0.5
-        # print(q.size())
-        q = q * self.scaling
-        logits = torch.matmul(q, k.transpose(-1, -2))
-        # if bias is not None:
-        logits += bias
-        # if mask is not None:
-        #     if mask.dim() == 1:
-        # mask = mask[None, None, None, :].to(dtype=torch.bool)
-        # elif mask.dim() == 2:
-        #     mask = mask[:, None, None, :].to(dtype=torch.bool)
-        logits.masked_fill_(~mask, -1e9)
-        weights = torch.softmax(logits, dim=-1)
-        return torch.matmul(weights, v)
+
 
     def forward(self,
                 x: torch.Tensor,
@@ -204,8 +188,9 @@ class SelfAttention(nn.Module):
         #qkv dim 4 bias shape torch.Size([16, 107, 107])
         # print("qkv dim",q.dim(),"mask shape",mask.shape)
         # print(f'q: {q.shape}, k: {k.shape}, v: {v.shape}')
-
-        weighted_avg = self.dot_product_attention(
+        # print("mask: ",mask.shape)
+        # print("bias: ",pair_logits.shape)
+        weighted_avg =dot_product_attention (
             q, k, v, mask=mask, bias=pair_logits
         )
 

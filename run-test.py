@@ -5,11 +5,9 @@ import random
 from collections.abc import Sequence
 import csv
 import dataclasses
-import multiprocessing
 import os
 import pathlib
-import shutil
-import string
+
 import textwrap
 import time
 from typing import overload
@@ -58,7 +56,7 @@ UseVino=False
 SAVE_EVO_ONNX=False
 USE_EVO_VINO= False
 SAVE_CONFIDENCE_ONNX=False
-USE_IPEX=True
+USE_IPEX=False
 _HOME_DIR = pathlib.Path(os.environ.get('HOME'))
 DEFAULT_MODEL_DIR = _HOME_DIR / 'models/model_103275239_1'
 DEFAULT_DB_DIR = _HOME_DIR / 'public_databases'
@@ -113,7 +111,7 @@ _CPU_INFERENCE = flags.DEFINE_bool(
 # control the number of threads used by the data pipeline.
 _NUM_THREADS = flags.DEFINE_integer(
     'num_cpu_threads',
-    119,
+    60,
     'Number of threads to use for the data pipeline.',
 )
 
@@ -325,7 +323,7 @@ class ModelRunner:
 
         else: # CPU Inference
             if _CPU_AMP_OPT:
-                with torch.amp.autocast("cpu", dtype=torch.bfloat16):
+                # with torch.amp.autocast("cpu", dtype=torch.bfloat16):
                     print("Running inference with AMP on CPU...")
                     # self._model=torch.jit.trace(self._model,featurised_example)
                     # result = self._model(featurised_example)

@@ -22,6 +22,7 @@ import diffusionWorker2.misc.params as params
 import diffusionWorker2.misc.feat_batch as feat_batch
 from diffusionWorker2.network import diffusion_head
 from diffusionWorker2.network.diffusion_step import DiffusionStep
+from diffusionWorker2.network.dot_product_attention import get_attn_mask
 from openvino import convert_model
 import onnx
 import numpy as np
@@ -449,6 +450,10 @@ class diffusion():
         pair_c = pair
         target_feat_c = target_feat
 
+        seq_mask = batch.token_features.mask
+        # seq_mask_attn=get_attn_mask(seq_mask,dtype=positions.dtype,device=device,
+        #                             seq_len=pred_dense_atom_mask.shape[0],batch_size=1,num_heads=16)
+
         # print("diffusion2 start sample diffusion", positions.shape)
 
         for step_idx in range(self.diffusion_steps):
@@ -460,7 +465,7 @@ class diffusion():
                 asym_id=batch.token_features.asym_id,
                 entity_id=batch.token_features.entity_id,
                 sym_id=batch.token_features.sym_id,
-                seq_mask=batch.token_features.mask,
+                seq_mask=seq_mask,
                 pred_dense_atom_mask=pred_dense_atom_mask,
                 ref_ops=batch.ref_structure.positions,
                 ref_mask=batch.ref_structure.mask,

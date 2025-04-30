@@ -11,11 +11,12 @@
 
 import torch
 import torch.nn as nn
+# from torch.nn import RMSNorm as LayerNorm
 
 from torch.nn import LayerNorm
 from evoformer.network.gated_linear_unit import gated_linear_unit_torch
 
-
+import time
 
 class TriangleMultiplication(nn.Module):
     def __init__(self, c_pair: int = 128, _outgoing: bool = True) -> None:
@@ -29,28 +30,14 @@ class TriangleMultiplication(nn.Module):
         self.output_projection = nn.Linear(
             self.c_pair, self.c_pair, bias=False)
         self.gating_linear = nn.Linear(self.c_pair, self.c_pair, bias=False)
-        
-        # ref:
-        # equation = {
-        # 'ikc,jkc->ijc': 'cik,cjk->cij',
-        # 'kjc,kic->ijc': 'ckj,cki->cij',
-        # }[self.config.equation]
+
+        self._outgoing=False
+        self._outgoing=_outgoing
 
         self.equation='ckj,cki->cij'
         if _outgoing is True:
             self.equation='cik,cjk->cij'
-        # ref:
-        # num_layer: int
-        # pair_attention: GridSelfAttention.Config = base_config.autocreate()
-        # pair_transition: TransitionBlock.Config = base_config.autocreate()
-        # single_attention: diffusion_transformer.SelfAttentionConfig | None = None
-        # single_transition: TransitionBlock.Config | None = None
-        # triangle_multiplication_incoming: TriangleMultiplication.Config = (
-        #     base_config.autocreate(equation='kjc,kic->ijc')
-        # )
-        # triangle_multiplication_outgoing: TriangleMultiplication.Config = (
-        #     base_config.autocreate(equation='ikc,jkc->ijc')
-        # )
+
     shard_transition_blocks: bool = True
 
     def forward(self, pair: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
@@ -64,7 +51,7 @@ class TriangleMultiplication(nn.Module):
 
         pair = self.left_norm_input(pair)
         input_pair = pair
-
+        # time1 = time.time()
         projection = self.projection(pair)
         projection = projection.permute(2, 0, 1)
         if mask is not None:
@@ -80,7 +67,10 @@ class TriangleMultiplication(nn.Module):
         a, b = torch.squeeze(a, dim=1), torch.squeeze(b, dim=1)
         pair = torch.einsum(self.equation, a, b)
 
+
+
         pair = pair.permute(1, 2, 0)
+        # print("trimul cost time:", time.time() - time1)
         pair = self.center_norm(pair)
         pair = self.output_projection(pair)
 

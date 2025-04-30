@@ -12,7 +12,7 @@ from dataclasses import dataclass
 
 import torch
 import torch.nn as nn
-
+import time
 from evoformer.misc import protein_data_processing
 from evoformer.misc import geometry,geometry_method
 from alphafold3.constants import residue_names
@@ -104,6 +104,7 @@ class TemplateEmbedding(nn.Module):
         template_aatype, template_atom_positions, template_atom_mask,
 
         padding_mask_2d: torch.Tensor,
+        attn_mask:torch.Tensor,
         multichain_mask_2d: torch.Tensor
     ) -> torch.Tensor:
         # num_templates = templates.aatype.shape[0]
@@ -121,7 +122,7 @@ class TemplateEmbedding(nn.Module):
             template_embedding = self.single_template_embedding(
                 query_embedding,
                 template_aatype[template_idx], template_atom_positions[template_idx], template_atom_mask[template_idx],
-                padding_mask_2d, multichain_mask_2d
+                padding_mask_2d=padding_mask_2d,attn_mask=attn_mask, multichain_mask_2d=multichain_mask_2d
             )
             summed_template_embeddings += template_embedding
 
@@ -252,10 +253,18 @@ class SingleTemplateEmbedding(nn.Module):
         if is_ligand is None:
             is_ligand = torch.zeros_like(aatype)
         # torch.take_along_dim(input, indices, dim=None, *, out=None) → Tensor
-        pseudobeta_index_polymer = torch.take_along_dim(
-            self.RESTYPE_PSEUDOBETA_INDEX, aatype.to(dtype=torch.int64),
-            dim=0
-        ).to(dtype=torch.int32)
+        # print('self.RESTYPE_PSEUDOBETA_INDEX',self.RESTYPE_PSEUDOBETA_INDEX.shape)
+        # print('aatype',aatype.shape)
+        #self.RESTYPE_PSEUDOBETA_INDEX torch.Size([31])
+        # aatype torch.Size([37])
+        # pseudobeta_index_polymer = torch.take_along_dim(
+        #     self.RESTYPE_PSEUDOBETA_INDEX, aatype.to(dtype=torch.int64),
+        #     dim=0
+        # ).to(dtype=torch.int32)
+        # convert take_along_dim to gather because torch script only support up to opset20
+        pseudobeta_index_polymer = self.RESTYPE_PSEUDOBETA_INDEX.to(
+            device=aatype.device
+        )[aatype.to(dtype=torch.int64)].to(dtype=torch.int32)  # 结果保持 [37]
 
         pseudobeta_index = torch.where(
             is_ligand.to(dtype=torch.bool),
@@ -263,15 +272,28 @@ class SingleTemplateEmbedding(nn.Module):
             pseudobeta_index_polymer,
         ).to(dtype=torch.int64)
 
+        print('dense_atom_positions',dense_atom_positions.shape)
+        print('pseudobeta_index[..., None, None]',pseudobeta_index[..., None, None].shape)
+        #dense_atom_positions torch.Size([37, 24, 3])
+        # pseudobeta_index[..., None, None] torch.Size([37, 1, 1])
         pseudo_beta = torch.take_along_dim(
             dense_atom_positions, pseudobeta_index[..., None, None], dim=-2
         )
         pseudo_beta = torch.squeeze(pseudo_beta, dim=-2)
+        # row_idx = torch.arange(37, device=dense_atom_positions.device)
+        # pseudo_beta = dense_atom_positions[row_idx, pseudobeta_index, :]  # 直接索引 → [37, 3]
 
+
+        # print('dense_atom_masks',dense_atom_masks.shape)
+        # print('pseudobeta_index[..., None]',pseudobeta_index[..., None].shape)
+        #dense_atom_masks torch.Size([37, 24])
+        # pseudobeta_index[..., None] torch.Size([37, 1])
         pseudo_beta_mask = torch.take_along_dim(
             dense_atom_masks, pseudobeta_index[..., None], dim=-1
         ).to(dtype=torch.float32)
         pseudo_beta_mask = torch.squeeze(pseudo_beta_mask, dim=-1)
+        # pseudo_beta_mask = dense_atom_masks[row_idx, pseudobeta_index].to(dtype=torch.float32)  # 直接索引 → [37]
+
 
         return pseudo_beta, pseudo_beta_mask
 
@@ -283,7 +305,7 @@ class SingleTemplateEmbedding(nn.Module):
             multichain_mask_2d
     ) -> torch.Tensor:
         # Compute distogram feature for the template.
-
+        time1=time.time()
         dtype = query_embedding.dtype
 
         aatype = templates_aatype
@@ -321,11 +343,24 @@ class SingleTemplateEmbedding(nn.Module):
         # backbone affine - i.e. in each residues local frame, what direction are
         # each of the other residues.
         # print("protein_data_processing:",protein_data_processing.RESTYPE_RIGIDGROUP_DENSE_ATOM_IDX.to(device=templates_aatype.device).shape)
-        template_group_indices = torch.take_along_dim(
-            self.RESTYPE_RIGIDGROUP_DENSE_ATOM_IDX.to(device=templates_aatype.device),
-            templates_aatype.to(dtype=torch.int64)[..., None, None],
-            dim=0
-        )
+        # print('self.RESTYPE_RIGIDGROUP_DENSE_ATOM_IDX',self.RESTYPE_RIGIDGROUP_DENSE_ATOM_IDX.shape)
+        # print('templates_aatype[..., None, None]',templates_aatype[..., None, None].shape)
+        #self.RESTYPE_RIGIDGROUP_DENSE_ATOM_IDX torch.Size([31, 8, 3])
+        #templates_aatype[..., None, None] torch.Size([37, 1, 1])
+        # template_group_indices = torch.take_along_dim(
+        #     self.RESTYPE_RIGIDGROUP_DENSE_ATOM_IDX.to(device=templates_aatype.device),
+        #     templates_aatype.to(dtype=torch.int64)[..., None, None],
+        #     dim=0
+        # )
+
+
+        # convert take_along_dim to gather because torch script only support up to opset20
+
+        template_group_indices = self.RESTYPE_RIGIDGROUP_DENSE_ATOM_IDX.to(
+            device=templates_aatype.device
+        )[templates_aatype.to(dtype=torch.int64)]  # 结果自动广播到 [37, 8, 3]
+
+
 
         # rigid, backbone_mask = make_backbone_rigid(
         #     geometry.Vec3Array.from_array(dense_atom_positions),
@@ -397,10 +432,10 @@ class SingleTemplateEmbedding(nn.Module):
         to_concat.append((backbone_mask_2d, 0))
         # for in_concat,_ in to_concat:
         #     print("in_concat",in_concat.shape)
-
-
+        print("construct_input:",time.time()-time1)
         query_embedding = self.query_embedding_norm(query_embedding)
-
+        # for x, n_input_dims in to_concat:
+        #     print(x.shape)
         to_concat.append((query_embedding, 1))
         # act = 0
         # 处理第0个元素
@@ -481,17 +516,21 @@ class SingleTemplateEmbedding(nn.Module):
         template_aatype, template_atom_positions, template_atom_mask,
 
         padding_mask_2d: torch.Tensor,
+        attn_mask: torch.Tensor,
         multichain_mask_2d: torch.Tensor
     ) -> torch.Tensor:
 
         # act = self.construct_input(
         #     query_embedding, templates.aatype,templates.atom_positions,templates.atom_mask, multichain_mask_2d)
+
         act = self.construct_input(
             query_embedding,
             template_aatype, template_atom_positions, template_atom_mask,
             multichain_mask_2d)
+        # padding_mask_2d_c=padding_mask_2d.clone()
         for pairformer_block in self.template_embedding_iteration:
-            act = pairformer_block(act, pair_mask=padding_mask_2d)
+            act = pairformer_block(act, pair_mask=padding_mask_2d,pair_mask_attn=attn_mask)
+        # assert torch.allclose(padding_mask_2d_c, padding_mask_2d, atol=1e-2, rtol=1e-2), "输出不一致！"
 
         act = self.output_layer_norm(act)
 

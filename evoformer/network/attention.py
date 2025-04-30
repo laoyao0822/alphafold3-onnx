@@ -13,6 +13,7 @@ import einops
 import torch
 import torch.nn as nn
 
+# from torch.nn import RMSNorm as LayerNorm
 from torch.nn import LayerNorm
 from evoformer.network.dot_product_attention import dot_product_attention
 # from evoformer.network.dot_product_attention import dot_product_attention_flex
@@ -192,13 +193,14 @@ class GridSelfAttention(nn.Module):
         bias = self.pair_bias_projection(pair).permute(2, 0, 1)
         # print("mask bias",mask.shape,bias.shape)
 
-        if attn_mask is not None:
-            weighted_avg=dot_product_attention_sdpa(q, k, v, attn_mask=attn_mask,bias=bias)
-        else:
-            weighted_avg = dot_product_attention(q, k, v,
-                                              mask=mask,
-                                              bias=bias)
+        # if attn_mask is not None:
+        weighted_avg=dot_product_attention_sdpa(q, k, v, attn_mask=attn_mask,bias=bias)
+        # else:
+        #     weighted_avg = dot_product_attention(q, k, v,
+        #                                       mask=mask,
+        #                                       bias=bias)
 
+        # print("weighted_avg", weighted_avg.shape)
 
         batch_size, num_heads, seq_len, head_dim = weighted_avg.size()
         # weighted_avg1 shape torch.Size([107, 107, 64]) weighted_avg2 shape torch.Size([107, 107, 64])

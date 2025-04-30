@@ -76,6 +76,7 @@ class PairformerBlock(nn.Module):
         pair_mask: torch.Tensor,
         single: Optional[torch.Tensor] = None,
         seq_mask: Optional[torch.Tensor] = None,
+        pair_mask_attn: Optional[torch.Tensor] = None,
     ) -> tuple[Optional[torch.Tensor], torch.Tensor]:
         """
         Forward pass of the PairformerBlock.
@@ -91,10 +92,14 @@ class PairformerBlock(nn.Module):
         """
         pair += self.triangle_multiplication_outgoing(pair, mask=pair_mask)
         pair += self.triangle_multiplication_incoming(pair, mask=pair_mask)
-        print("pairformer pair--------------",)
-        pair += self.pair_attention1(pair, mask=pair_mask)
-        pair += self.pair_attention2(pair, mask=pair_mask)
-        print("pairformer pair end-------------------")
+        pair += self.pair_attention1(pair, attn_mask=pair_mask_attn)
+        pair += self.pair_attention2(pair, attn_mask=pair_mask_attn)
+
+            # print("torch pairformer pair attn--------------", )
+            #
+            # pair += self.pair_attention1(pair, mask=pair_mask)
+            # pair += self.pair_attention2(pair, mask=pair_mask)
+        # print("pairformer pair end-------------------")
         pair += self.pair_transition(pair)
 
         if self.with_single is True:
@@ -145,12 +150,12 @@ class EvoformerBlock(nn.Module):
         msa += self.msa_transition(msa)
         pair += self.triangle_multiplication_outgoing(pair, mask=pair_mask)
         pair += self.triangle_multiplication_incoming(pair, mask=pair_mask)
-        print("evoformer pair-------------------")
+        # print("evoformer pair-------------------")
         # pair += self.pair_attention1(pair, mask=pair_mask)
         # pair += self.pair_attention2(pair, mask=pair_mask)
         pair +=self.pair_attention1(pair,attn_mask=pair_mask_attn)
         pair += self.pair_attention2(pair, attn_mask=pair_mask_attn)
-        print("evoformer end-------------")
+        # print("evoformer end-------------")
         pair += self.pair_transition(pair)
 
         return msa, pair
