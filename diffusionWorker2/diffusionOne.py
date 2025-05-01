@@ -32,7 +32,8 @@ class diffusion():
         super(diffusion, self).__init__()
         self.num_recycles = num_recycles
         self.num_samples = num_samples
-        self.diffusion_steps = diffusion_steps
+        # self.diffusion_steps = diffusion_steps
+        self.diffusion_steps = 2
         self.gamma_0 = 0.8
         self.gamma_min = 1.0
         self.noise_scale = 1.003
@@ -297,9 +298,9 @@ class diffusion():
     ):
         # pred_dense_atom_mask = batch.predicted_structure_info.atom_mask
 
-        # positions = diffusion_head.random_augmentation(
-        #     positions=positions, mask=pred_dense_atom_mask
-        # )
+        positions = diffusion_head.random_augmentation(
+            positions=positions, mask=pred_dense_atom_mask
+        )
         #step1
         # gamma = self.gamma_0 * (noise_level > self.gamma_min)
         # t_hat = noise_level_prev * (1 + gamma)
@@ -406,16 +407,6 @@ class diffusion():
             # 获取输出张量 (假设第一个输出是 positions_denoised)
             output_tensor = infer_request.get_output_tensor(0)
             positions_out = torch.from_numpy(output_tensor.data)
-
-        # if torch.allclose(positions_denoised,positions_denoised2,1e-4):
-        #     print("no difference")
-        # else:
-        #     print("difference")
-        #     print("torch:------------------")
-        #     print(positions_denoised)
-        #     print("onnx")
-        #     print(positions_denoised2)
-        #     exit(0)
 
         #step1
         # grad = (positions_noisy - positions_denoised) / t_hat

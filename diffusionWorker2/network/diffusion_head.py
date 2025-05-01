@@ -48,7 +48,12 @@ def noise_schedule(t, smin=0.0004, smax=160.0, p=7):
         SIGMA_DATA
         * (smax ** (1 / p) + t * (smin ** (1 / p) - smax ** (1 / p))) ** p
     )
-
+def mask_mean(mask, value, dim=None, keepdim=False, eps=1e-10):
+    broadcast_factor = 1.0
+    # print("broadcast_factor:",broadcast_factor)
+    return torch.sum(mask * value, keepdim=keepdim, dim=dim) / (
+        torch.clamp(torch.sum(mask, keepdim=keepdim, dim=dim) * broadcast_factor, min=eps)
+    )
 
 def random_rotation(device, dtype):
     # Create a random rotation (Gram-Schmidt orthogonalization of two
@@ -59,30 +64,6 @@ def random_rotation(device, dtype):
     e1 = v1 / torch.clamp(torch.linalg.norm(v1), min=1e-10)
     e2 = torch.cross(e0, e1, dim=-1)
     return torch.stack([e0, e1, e2])
-
-# def random_rotation(
-#     # v0,  v1,
-#     eps: float = 1e-10
-# ) -> torch.Tensor:
-#     v0, v1 = torch.randn(size=(2, 3))
-#     # 手动实现Gram-Schmidt正交化
-#     norm_v0 = torch.sqrt(torch.sum(v0**2, dim=-1, keepdim=True))+ eps
-#     e0 = v0 / norm_v0
-#
-#     dot = torch.sum(v1 * e0, dim=-1, keepdim=True)
-#     v1_ortho = v1 - e0 * dot
-#
-#     norm_v1 = torch.sqrt(torch.sum(v1_ortho**2, dim=-1, keepdim=True)) + eps
-#     e1 = v1_ortho / norm_v1
-#     # 手动计算叉乘
-#     e2_x = e0[..., 1] * e1[..., 2] - e0[..., 2] * e1[..., 1]
-#     e2_y = e0[..., 2] * e1[..., 0] - e0[..., 0] * e1[..., 2]
-#     e2_z = e0[..., 0] * e1[..., 1] - e0[..., 1] * e1[..., 0]
-#     e2 = torch.stack([e2_x, e2_y, e2_z], dim=-1)
-#
-#     return torch.stack([e0, e1, e2], dim=-2)
-
-
 
 # @torch.jit.trace
 def random_augmentation(
@@ -106,16 +87,6 @@ def random_augmentation(
     # rot=random_rotation()
     translation = torch.randn(
         size=(3,), dtype=positions.dtype, device=positions.device)
-
-    # augmented_positions = (
-    #     # torch.einsum(
-    #     #     '...i,ij->...j',
-    #     #     positions - center,
-    #     #     rot,
-    #     # )
-    #     torch.matmul(positions-center, rot)
-    #     + translation
-    # )
     augmented_positions=torch.matmul(positions-center, rot)+ translation
     return augmented_positions * mask[..., None]
 
@@ -256,9 +227,9 @@ class DiffusionHead(nn.Module):
     ) -> torch.Tensor:
         #step2
         # torch.save({"positions": positions,"mask":pred_dense_atom_mask},"/root/pycharm/random_aug.pt")
-        positions = random_augmentation(
-            positions=positions, mask=pred_dense_atom_mask
-        )
+        # positions = random_augmentation(
+        #     positions=positions, mask=pred_dense_atom_mask
+        # )
         # exit(0)
 
         #step1

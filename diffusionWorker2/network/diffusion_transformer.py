@@ -193,7 +193,9 @@ class SelfAttention(nn.Module):
         weighted_avg =dot_product_attention (
             q, k, v, mask=mask, bias=pair_logits
         )
-
+        # weighted_avg = dot_product_attention_sdpa(
+        #     q, k, v, attn_mask=mask, bias=pair_logits
+        # )
         weighted_avg = weighted_avg.squeeze(0)
         weighted_avg = einops.rearrange(weighted_avg, 'h q c -> q (h c)')
         gate_logits = self.gating_query(x)

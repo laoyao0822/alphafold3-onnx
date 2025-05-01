@@ -76,6 +76,8 @@ class PairformerBlock(nn.Module):
         pair_mask: torch.Tensor,
         single: Optional[torch.Tensor] = None,
         seq_mask: Optional[torch.Tensor] = None,
+        pair_mask_attn: Optional[torch.Tensor] = None,
+
     ) -> tuple[Optional[torch.Tensor], torch.Tensor]:
         """
         Forward pass of the PairformerBlock.

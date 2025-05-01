@@ -407,7 +407,7 @@ class EvoFormerOne():
     def __init__(self, num_recycles: int = 10, num_samples: int = 5, diffusion_steps: int = 200):
         super(EvoFormerOne, self).__init__()
 
-        self.num_recycles = num_recycles
+        self.num_recycles = 1
         self.num_samples = num_samples
 
         self.evoformer_pair_channel = 128
@@ -773,7 +773,7 @@ class EvoFormerOne():
 
 
         # time1=time.time()
-        for _ in range(self.num_recycles + 1):
+        for _ in range(self.num_recycles + 0):
         # for _ in range(0+1):
             time1=time.time()
             single,pair = self.evoformer(
@@ -808,7 +808,7 @@ class EvoFormerOne():
                 # prev=embeddings,
             )
             print("evo one cost time:", time.time()-time1)
-            exit(0)
+            # exit(0)
         # print("dtype",c_pair.dtype,c_single.dtype)
         # print("shape",c_pair.shape,c_single.shape)
         # return embeddings

@@ -56,7 +56,7 @@ UseVino=False
 SAVE_EVO_ONNX=False
 USE_EVO_VINO= False
 SAVE_CONFIDENCE_ONNX=False
-USE_IPEX=False
+USE_IPEX=True
 _HOME_DIR = pathlib.Path(os.environ.get('HOME'))
 DEFAULT_MODEL_DIR = _HOME_DIR / 'models/model_103275239_1'
 DEFAULT_DB_DIR = _HOME_DIR / 'public_databases'
@@ -111,7 +111,7 @@ _CPU_INFERENCE = flags.DEFINE_bool(
 # control the number of threads used by the data pipeline.
 _NUM_THREADS = flags.DEFINE_integer(
     'num_cpu_threads',
-    60,
+    119,
     'Number of threads to use for the data pipeline.',
 )
 
@@ -240,7 +240,8 @@ class ModelRunner:
         # session = ort.InferenceSession(ONNX_PATH, sess_options=sess_options,provider_options=['OpenVINO_CPU'])
         # self.diffusion=session
         if UseVino:
-            self.diffusion=diffusion()
+            # self.diffusion=diffusion()
+            self.diffusion=diffusion_vino()
             self.diffusion.initOpenvinoModel(OPENVINO_PATH)
             # self.diffusion.initOnnxModel(ONNX_PATH)
         elif SAVE_ONNX or not DIFFUSION_ONNX:
@@ -264,7 +265,7 @@ class ModelRunner:
         # Apply IPEX optimization for CPU if device is CPU
         if _CPU_INFERENCE.value:
             print("mkl",torch.backends.mkl.is_available(),"onednn",torch.backends.mkldnn.is_available())
-            if not SAVE_ONNX and  not DIFFUSION_ONNX and not UseVino and not SAVE_EVO_ONNX and not USE_EVO_VINO and USE_IPEX:
+            if  USE_IPEX:
                 # pass
                 import intel_extension_for_pytorch as ipex
                 # import openvino as ov
@@ -274,7 +275,8 @@ class ModelRunner:
                 self.target_feat = ipex.optimize(self.target_feat,weights_prepack=False,optimize_lstm=True,auto_kernel_selection=True,dtype=torch.bfloat16)
                 self.evoformer.evoformer = ipex.optimize(self.evoformer.evoformer,weights_prepack=False,optimize_lstm=True,auto_kernel_selection=True,dtype=torch.bfloat16)
                 # self.evoformer.evoformer = torch.compile(self.evoformer.evoformer, backend="ipex")
-                self.diffusion.diffusion_head = ipex.optimize(self.diffusion.diffusion_head,weights_prepack=False,optimize_lstm=True,auto_kernel_selection=True,dtype=torch.bfloat16)
+                if not UseVino:
+                    self.diffusion.diffusion_head = ipex.optimize(self.diffusion.diffusion_head,weights_prepack=False,optimize_lstm=True,auto_kernel_selection=True,dtype=torch.bfloat16)
                 # self.diffusion.diffusion_head=torch.compile(self.diffusion.diffusion_head,backend="ipex")
                 self.confidence.confidence_head=ipex.optimize(self.confidence.confidence_head,weights_prepack=False,optimize_lstm=True,auto_kernel_selection=True,dtype=torch.bfloat16)
                 # opts = {"device": "CPU", "config": {"PERFORMANCE_HINT": "LATENCY"}, "model_caching" : True,"cache_dir": "./model_cache"}
@@ -323,7 +325,7 @@ class ModelRunner:
 
         else: # CPU Inference
             if _CPU_AMP_OPT:
-                # with torch.amp.autocast("cpu", dtype=torch.bfloat16):
+                with torch.amp.autocast("cpu", dtype=torch.bfloat16):
                     print("Running inference with AMP on CPU...")
                     # self._model=torch.jit.trace(self._model,featurised_example)
                     # result = self._model(featurised_example)
@@ -381,6 +383,13 @@ class ModelRunner:
                                             target_feat=target_feat,
                                             save_path=ONNX_PATH)
 
+
+                    sample_mask = batch.predicted_structure_info.atom_mask
+                    # samples = self._sample_diffusion(batch, embeddings)
+
+                    confidence_output_per_sample = []
+                    # positions = torch.randn(
+                    #     pred_dense_atom_mask.shape + (3,), device='cpu').contiguous()
                     for i in range(_NUM_DIFFUSION_SAMPLES.value):
                         # print("diffusion sample %d" % i)
                         time1 = time.time()
@@ -388,15 +397,32 @@ class ModelRunner:
                             positions[i] = self.diffusion.forward(featurised_example,single=embeddings['single'], pair=embeddings['pair'],
                                                       target_feat=target_feat,USE_ONNX=False
                                                       )
+
+
                         else:
                             positions[i] = self.diffusion.forward(featurised_example,single=embeddings['single'], pair=embeddings['pair'],
-                                                      target_feat=target_feat,USE_ONNX=True
+                                                      target_feat=target_feat,
+                                                                  index=i
                                                       )
                         print("diffusion cost time: ", time.time() - time1)
+                        time1=time.time()
+                        confidence_output = self.confidence.forward(batch=featurised_example,
+                                                                embeddings=embeddings, positions=positions[i])
+                        confidence_output_per_sample.append(confidence_output)
+                        print("confidence output time: ", time.time() - time1)
+
+                    confidence_output = {}
+                    for key in confidence_output_per_sample[0]:
+                        confidence_output[key] = torch.stack(
+                            [sample[key] for sample in confidence_output_per_sample], dim=0)
+
+
+                    final_dense_atom_mask = torch.tile(sample_mask[None], (_NUM_DIFFUSION_SAMPLES.value, 1, 1))
+                    samples = {'atom_positions': positions, 'mask': final_dense_atom_mask}
+
                 # with torch.amp.autocast(device_type="cpu", dtype=torch.bfloat16):
                 #     print(positions[0][0])
                 #     confidence_out=self.confidence
-                    confidence_output,samples=self.confidence.forward(batch=featurised_example,embeddings=embeddings,positions=positions)
 
                     distogram=self._model(featurised_example,embeddings,positions)
                     result={

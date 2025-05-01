@@ -257,14 +257,14 @@ class SingleTemplateEmbedding(nn.Module):
         # print('aatype',aatype.shape)
         #self.RESTYPE_PSEUDOBETA_INDEX torch.Size([31])
         # aatype torch.Size([37])
-        # pseudobeta_index_polymer = torch.take_along_dim(
-        #     self.RESTYPE_PSEUDOBETA_INDEX, aatype.to(dtype=torch.int64),
-        #     dim=0
-        # ).to(dtype=torch.int32)
+        pseudobeta_index_polymer = torch.take_along_dim(
+            self.RESTYPE_PSEUDOBETA_INDEX, aatype.to(dtype=torch.int64),
+            dim=0
+        ).to(dtype=torch.int32)
         # convert take_along_dim to gather because torch script only support up to opset20
-        pseudobeta_index_polymer = self.RESTYPE_PSEUDOBETA_INDEX.to(
-            device=aatype.device
-        )[aatype.to(dtype=torch.int64)].to(dtype=torch.int32)  # 结果保持 [37]
+        # pseudobeta_index_polymer = self.RESTYPE_PSEUDOBETA_INDEX.to(
+        #     device=aatype.device
+        # )[aatype.to(dtype=torch.int64)].to(dtype=torch.int32)  # 结果保持 [37]
 
         pseudobeta_index = torch.where(
             is_ligand.to(dtype=torch.bool),
@@ -272,8 +272,8 @@ class SingleTemplateEmbedding(nn.Module):
             pseudobeta_index_polymer,
         ).to(dtype=torch.int64)
 
-        print('dense_atom_positions',dense_atom_positions.shape)
-        print('pseudobeta_index[..., None, None]',pseudobeta_index[..., None, None].shape)
+        # print('dense_atom_positions',dense_atom_positions.shape)
+        # print('pseudobeta_index[..., None, None]',pseudobeta_index[..., None, None].shape)
         #dense_atom_positions torch.Size([37, 24, 3])
         # pseudobeta_index[..., None, None] torch.Size([37, 1, 1])
         pseudo_beta = torch.take_along_dim(
@@ -432,7 +432,7 @@ class SingleTemplateEmbedding(nn.Module):
         to_concat.append((backbone_mask_2d, 0))
         # for in_concat,_ in to_concat:
         #     print("in_concat",in_concat.shape)
-        print("construct_input:",time.time()-time1)
+        # print("construct_input:",time.time()-time1)
         query_embedding = self.query_embedding_norm(query_embedding)
         # for x, n_input_dims in to_concat:
         #     print(x.shape)
