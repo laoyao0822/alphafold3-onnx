@@ -177,6 +177,9 @@ class ConfidenceHead(nn.Module):
         # pair,
         target_feat: torch.Tensor,
         seq_mask: torch.Tensor,
+        attn_seq_mask,
+        pair_mask,
+        attn_pair_mask,
         # token_atoms_to_pseudo_beta: atom_layout.GatherInfo,
         ta_to_pb_gather_idxs,
         ta_to_pb_gather_mask,
@@ -196,9 +199,9 @@ class ConfidenceHead(nn.Module):
         # print("ta_to_pb_gather_mask", ta_to_pb_gather_mask.shape)
         dtype = dense_atom_positions.dtype
 
-        seq_mask_cast = seq_mask.to(dtype=dtype)
-        pair_mask = seq_mask_cast[:, None] * seq_mask_cast[None, :]
-        pair_mask = pair_mask.to(dtype=dtype)
+        # seq_mask_cast = seq_mask.to(dtype=dtype)
+        # pair_mask = seq_mask_cast[:, None] * seq_mask_cast[None, :]
+        # pair_mask = pair_mask.to(dtype=dtype)
 
         pair_act = pair.to(dtype=dtype)
         single_act = single.to(dtype=dtype)
@@ -211,7 +214,7 @@ class ConfidenceHead(nn.Module):
         # pairformer stack
         for layer in self.confidence_pairformer:
             pair_act, single_act = layer(
-                pair_act, pair_mask, single_act, seq_mask)
+                pair_act, pair_mask, single_act, attn_seq_mask,pair_mask_attn=attn_pair_mask)
         print('confidence pairformer cost time: ', time.time() - time1)
         # Produce logits to predict a distogram of pairwise distance errors
         # between the input prediction and the ground truth.

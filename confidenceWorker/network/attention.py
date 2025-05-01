@@ -14,10 +14,14 @@ import torch
 import torch.nn as nn
 
 from torch.nn import LayerNorm
-from confidenceWorker.network.dot_product_attention import dot_product_attention
+from confidenceWorker.network.dot_product_attention import dot_product_attention_sdpa,dot_product_attention
 import torch.distributed as dist
 # import torchfold3.config as config
 import time
+
+# from dot_product_attention import dot_product_attention_sdpa
+
+
 # class GridSelfAttention(nn.Module):
 #
 #     def __init__(self, c_pair: int = 128, num_head: int = 4, transpose: bool = False):
@@ -181,9 +185,6 @@ class GridSelfAttention(nn.Module):
 
 
 
-        self.gating_query1 = nn.Linear(self.c_pair, self.c_pair, bias=False)
-
-
     def _attention(self, pair: torch.Tensor, mask: torch.Tensor):
 
         q = self.q_projection(pair)
@@ -198,9 +199,10 @@ class GridSelfAttention(nn.Module):
         bias = self.pair_bias_projection(pair).permute(2, 0, 1)
 
 
-        weighted_avg = dot_product_attention(q, k, v,
-                                              mask=mask,
-                                              bias=bias)
+        # weighted_avg = dot_product_attention(q, k, v,
+        #                                       mask=mask,
+        #                                       bias=bias)
+        weighted_avg = dot_product_attention_sdpa(q, k, v,attn_mask=mask,bias=bias)
         weighted_avg = einops.rearrange(weighted_avg, 'b h n d -> b n (h d)')
 
         # weighted_avg1 shape torch.Size([107, 107, 64]) weighted_avg2 shape torch.Size([107, 107, 64])
@@ -234,7 +236,6 @@ class GridSelfAttention(nn.Module):
 
         if self.transpose:
             pair = pair.permute(1, 0, 2)
-
 
         # seq_len = pair.shape[0]
 

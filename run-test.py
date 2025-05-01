@@ -23,6 +23,7 @@ from alphafold3.model import features
 from alphafold3.model import post_processing
 from alphafold3.model import model
 from alphafold3.model.components import utils
+from evoformer.network.dot_product_attention import get_attn_mask
 
 import numpy as np
 import torch
@@ -332,6 +333,11 @@ class ModelRunner:
                     # exit(0)
                     batch = feat_batch.Batch.from_data_dict(featurised_example)
                     time1=time.time()
+                    seq_mask = batch.token_features.mask
+                    num_tokens = seq_mask.shape[0]
+
+
+
                     target_feat = self.target_feat(
                         aatype=batch.token_features.aatype,
                         profile=batch.msa.profile,
@@ -358,7 +364,14 @@ class ModelRunner:
                         ref_atom_name_chars=batch.ref_structure.atom_name_chars,
                         ref_space_uid=batch.ref_structure.ref_space_uid
                     )
-
+                    attn_mask_seq = get_attn_mask(mask=seq_mask, dtype=torch.float32, device='cpu', num_heads=16,
+                                                  seq_len=num_tokens, batch_size=1)
+                    pair_mask_confidence = seq_mask[:, None] * seq_mask[None, :]
+                    pair_mask_confidence_attn = get_attn_mask(mask=pair_mask_confidence, dtype=torch.float32,
+                                                              device='cpu',
+                                                              batch_size=num_tokens,
+                                                              num_heads=4, seq_len=num_tokens)
+                    pair_mask_confidence = pair_mask_confidence.to(dtype=torch.float32)
                     if SAVE_EVO_ONNX:
                         self.evoformer.getOnnxModel(featurised_example,target_feat,EVO_ONNX_PATH)
 
@@ -386,8 +399,8 @@ class ModelRunner:
 
                     sample_mask = batch.predicted_structure_info.atom_mask
                     # samples = self._sample_diffusion(batch, embeddings)
-
                     confidence_output_per_sample = []
+
                     # positions = torch.randn(
                     #     pred_dense_atom_mask.shape + (3,), device='cpu').contiguous()
                     for i in range(_NUM_DIFFUSION_SAMPLES.value):
@@ -407,7 +420,8 @@ class ModelRunner:
                         print("diffusion cost time: ", time.time() - time1)
                         time1=time.time()
                         confidence_output = self.confidence.forward(batch=featurised_example,
-                                                                embeddings=embeddings, positions=positions[i])
+                                                                embeddings=embeddings, positions=positions[i],attn_seq_mask=attn_mask_seq,
+                                                                    pair_mask=pair_mask_confidence,attn_pair_mask=pair_mask_confidence_attn)
                         confidence_output_per_sample.append(confidence_output)
                         print("confidence output time: ", time.time() - time1)
 

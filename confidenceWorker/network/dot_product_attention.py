@@ -15,8 +15,9 @@ def dot_product_attention_torch(q: torch.Tensor,
                                 v: torch.Tensor,
                                 mask: Optional[torch.Tensor] = None,
                                 bias: Optional[torch.Tensor] = None):
-    # scaling = q.size(-1) ** -0.5
-    # q = q * scaling
+    scaling = q.size(-1) ** -0.5
+    q = q * scaling
+
     logits = torch.matmul(q, k.transpose(-1, -2))
 
     if bias is not None:

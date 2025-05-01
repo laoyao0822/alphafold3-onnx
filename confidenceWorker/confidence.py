@@ -23,8 +23,11 @@ class ConfidenceOne():
         self.confidence_head = ConfidenceHead()
         self.num_samples=5
 
-    def forward(self, batch: dict[str, torch.Tensor]
-                ,embeddings,positions
+    def forward(self, batch
+            ,embeddings,positions
+            ,attn_seq_mask,
+            pair_mask,
+            attn_pair_mask,
                 ) :
         batch = feat_batch.Batch.from_data_dict(batch)
 
@@ -41,6 +44,9 @@ class ConfidenceOne():
                 pair=embeddings['pair'],
                 target_feat=embeddings['target_feat'],
                 seq_mask=batch.token_features.mask,
+                attn_seq_mask=attn_seq_mask,
+                pair_mask=pair_mask,
+                attn_pair_mask=attn_pair_mask,
                 # token_atoms_to_pseudo_beta=batch.pseudo_beta_info.token_atoms_to_pseudo_beta,
                 ta_to_pb_gather_idxs=batch.pseudo_beta_info.token_atoms_to_pseudo_beta.gather_idxs,
                 ta_to_pb_gather_mask=batch.pseudo_beta_info.token_atoms_to_pseudo_beta.gather_mask,
