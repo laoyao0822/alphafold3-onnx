@@ -773,7 +773,7 @@ class EvoFormerOne():
 
 
         # time1=time.time()
-        for _ in range(self.num_recycles + 0):
+        for _ in range(self.num_recycles + 1):
         # for _ in range(0+1):
             time1=time.time()
             single,pair = self.evoformer(

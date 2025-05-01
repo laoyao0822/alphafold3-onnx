@@ -18,7 +18,6 @@ from torch.nn import LayerNorm
 from evoformer.network.dot_product_attention import dot_product_attention
 # from evoformer.network.dot_product_attention import dot_product_attention_flex
 import torch.distributed as dist
-import torchfold3.config as config
 import time
 # class GridSelfAttention(nn.Module):
 #

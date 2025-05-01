@@ -1,6 +1,7 @@
 import math
 from typing import Optional
 import torch
+import time
 # from torch.nn.attention.flex_attention import (
 #     flex_attention,
 # )
@@ -14,9 +15,10 @@ def dot_product_attention_torch(q: torch.Tensor,
                                 v: torch.Tensor,
                                 mask: Optional[torch.Tensor] = None,
                                 bias: Optional[torch.Tensor] = None):
-    scaling = q.size(-1) ** -0.5
-    q = q * scaling
+    # scaling = q.size(-1) ** -0.5
+    # q = q * scaling
     logits = torch.matmul(q, k.transpose(-1, -2))
+
     if bias is not None:
         logits += bias
 
@@ -26,8 +28,126 @@ def dot_product_attention_torch(q: torch.Tensor,
         elif mask.dim() == 2:
             mask = mask[:, None, None, :].to(dtype=torch.bool)
         logits.masked_fill_(~mask, -1e9)
+
     weights = torch.softmax(logits, dim=-1)
+
     return torch.matmul(weights, v)
+
+import torch
+
+
+def dot_product_attention_sdpa_full(
+        q: torch.Tensor,
+        k: torch.Tensor,
+        v: torch.Tensor,
+        mask: Optional[torch.Tensor] = None,
+        bias: Optional[torch.Tensor] = None
+) -> torch.Tensor:
+    # 确保输入维度对齐
+    assert q.dim() == 4 and k.dim() == 4 and v.dim() == 4, "Inputs must be 4D: (batch, heads, seq_len, head_dim)"
+
+    # 合并 mask 和 bias 的逻辑
+    attn_mask = None
+
+    if mask is not None or bias is not None:
+        # 初始化 attn_mask 为全 0
+        device = q.device
+        dtype = q.dtype
+        attn_mask = torch.zeros(
+            (q.size(0), q.size(1), q.size(2), k.size(2)),
+            dtype=dtype, device=device
+        )
+        # print("attn_mask", attn_mask.shape)
+        # 添加 bias 到 attn_mask
+
+        mask=mask.to(dtype=torch.bool)
+        # 添加 mask 到 attn_mask
+        if mask is not None:
+            # 统一 mask 格式为 (batch, seq_len_k)
+            if mask.dim() == 1:
+                mask = mask.unsqueeze(0)  # (1, seq_len_k)
+            elif mask.dim() == 2:
+                mask = mask  # (batch, seq_len_k)
+            else:
+                raise ValueError("mask 必须是 1D (seq_len) 或 2D (batch, seq_len)")
+
+            # 将 bool mask 转换为 float mask (-inf/0)
+            mask_float = torch.zeros_like(mask, dtype=dtype, device=device)
+            mask_float = mask_float.masked_fill(~mask, float('-inf'))  # True 位置保留 0，False 设为 -inf
+
+            # 扩展 mask 到 (batch, 1, 1, seq_len_k) 以便广播
+            mask_float = mask_float[:, None, None, :]
+            attn_mask += mask_float
+
+    print("attn mask ",attn_mask.shape)
+    if bias is not None:
+        if bias.dim() == 3:  # (heads, seq_len_q, seq_len_k)
+            bias = bias.unsqueeze(0)  # 扩展 batch 维度
+        attn_mask += bias
+    # 调用 PyTorch SDPA
+    return torch.nn.functional.scaled_dot_product_attention(
+        q, k, v,
+        attn_mask=attn_mask,  # 合并后的掩码和偏置
+        dropout_p=0.0,  # 无 dropout
+        is_causal=False  # 非因果掩码（由 mask/bias 显式控制）
+    )
+
+
+def get_attn_mask(mask,dtype,device,seq_len,num_heads,batch_size):
+    attn_mask = torch.zeros(
+        (batch_size, num_heads, seq_len, seq_len),
+        dtype=dtype, device=device
+    )
+    if mask.dim() == 1:
+        mask = mask.unsqueeze(0)  # (1, seq_len_k)
+    mask_float = torch.zeros_like(mask, dtype=dtype, device=device)
+    mask_float = mask_float.masked_fill(~mask.to(dtype=torch.bool), -torch.inf)  # True 位置保留 0，False 设为 -inf
+
+    # 扩展 mask 到 (batch, 1, 1, seq_len_k) 以便广播
+    mask_float = mask_float[:, None, None, :]
+    attn_mask += mask_float
+    return attn_mask
+
+
+def get_attn_mask_withqk(mask,q,k):
+    device = q.device
+    dtype = q.dtype
+    attn_mask = torch.zeros(
+        (q.size(0), q.size(1), q.size(2), k.size(2)),
+        dtype=q.dtype, device=q.device
+    )
+    if mask.dim() == 1:
+        mask = mask.unsqueeze(0)  # (1, seq_len_k)
+    mask_float = torch.zeros_like(mask, dtype=dtype, device=device)
+    mask_float = mask_float.masked_fill(~mask.to(dtype=torch.bool), -torch.inf)  # True 位置保留 0，False 设为 -inf
+
+    # 扩展 mask 到 (batch, 1, 1, seq_len_k) 以便广播
+    mask_float = mask_float[:, None, None, :]
+    attn_mask += mask_float
+    return attn_mask
+
+
+execute_time=0
+
+# @torch._dynamo.disallow_in_graph
+def dot_product_attention_sdpa(
+        q: torch.Tensor,
+        k: torch.Tensor,
+        v: torch.Tensor,
+        attn_mask,
+        bias: Optional[torch.Tensor] = None
+) -> torch.Tensor:
+    sdpa_mask=attn_mask+bias
+    # print('q.shape',q.shape,'k.shape',k.shape,'v.shape',v.shape,'attn_mask.shape',attn_mask.shape)
+    # print("sdpa execute")
+
+    return torch.nn.functional.scaled_dot_product_attention(
+        q, k, v,
+        attn_mask=sdpa_mask,  # 合并后的掩码和偏置
+        dropout_p=0.0,  # 无 dropout
+        is_causal=False  # 非因果掩码（由 mask/bias 显式控制）
+    )
+
 
 def dot_product_attention(q: torch.Tensor,
                           k: torch.Tensor,
@@ -36,19 +156,22 @@ def dot_product_attention(q: torch.Tensor,
                           bias: Optional[torch.Tensor] = None):
     # if q,k,v is 3-dimensional, add a batch dimension
     qkv_dims = q.dim()
+
     if qkv_dims == 3:
+        print("qkv_dims",qkv_dims)
         q = q.unsqueeze(0)
         k = k.unsqueeze(0)
         v = v.unsqueeze(0)
-
-    # out = dot_product_attention_torch(q, k, v, mask, bias)
+    out = dot_product_attention_torch(q, k, v, mask, bias)
     # out = dot_product_attention_flex(q, k, v, mask, bias)
     # if k.shape[-1] not in {16, 32, 64, 128}:
-    out = dot_product_attention_torch(q, k, v, mask, bias)
+    # print("attn mask",get_attn_mask_withqk(mask,q,k).shape)
+    # out = dot_product_attention_sdpa_full(q, k, v, mask, bias)
     # else:
     #     out = dot_product_attention_flex(q, k, v, mask, bias)
 
     if qkv_dims == 3:
+        print("qkv dim 3")
         out = out.squeeze(0)
 
     return out

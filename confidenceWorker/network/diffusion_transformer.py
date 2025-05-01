@@ -19,7 +19,7 @@ import einops
 from confidenceWorker.network import atom_layout
 from torch.nn import LayerNorm
 from confidenceWorker.network.gated_linear_unit import gated_linear_unit
-from confidenceWorker.network.dot_product_attention import dot_product_attention
+from confidenceWorker.network.dot_product_attention import dot_product_attention ,dot_product_attention_sdpa_full
 
 
 
@@ -178,10 +178,12 @@ class SelfAttention(nn.Module):
         q, k, v = map(lambda t: einops.rearrange(
             t, 'n (h c) -> h n c', h=self.num_head).unsqueeze(0), [q, k, v])
 
+        # weighted_avg = dot_product_attention_sdpa_full(
+        #     q, k, v, mask=mask, bias=pair_logits
+        # )
         weighted_avg = dot_product_attention(
             q, k, v, mask=mask, bias=pair_logits
         )
-
         weighted_avg = weighted_avg.squeeze(0)
         weighted_avg = einops.rearrange(weighted_avg, 'h q c -> q (h c)')
         gate_logits = self.gating_query(x)

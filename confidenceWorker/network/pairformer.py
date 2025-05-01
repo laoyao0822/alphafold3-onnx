@@ -14,10 +14,10 @@ from typing import Optional
 import torch
 import torch.nn as nn
 
-from torchfold3.network.modules import Transition, OuterProductMean,TriangleMultiplication
-from torchfold3.network.attention import GridSelfAttention, MSAAttention
-from torchfold3.network.diffusion_transformer import SelfAttention
-from torchfold3.network.layer_norm import LayerNorm
+from confidenceWorker.network.modules import Transition,TriangleMultiplication
+from confidenceWorker.network.attention import GridSelfAttention
+from confidenceWorker.network.diffusion_transformer import SelfAttention
+from torch.nn import LayerNorm
 
 class PairformerBlock(nn.Module):
     """Implements Algorithm 17 [Line2-Line8] in AF3
