@@ -1,6 +1,6 @@
-import math
 from typing import Optional
 import torch
+from torch.nn.attention import sdpa_kernel,SDPBackend
 import time
 # from torch.nn.attention.flex_attention import (
 #     flex_attention,
@@ -35,7 +35,7 @@ def dot_product_attention_torch(q: torch.Tensor,
 
 import torch
 
-
+@torch.compile
 def dot_product_attention_sdpa_full(
         q: torch.Tensor,
         k: torch.Tensor,
@@ -87,7 +87,8 @@ def dot_product_attention_sdpa_full(
         q, k, v,
         attn_mask=attn_mask,  # 合并后的掩码和偏置
         dropout_p=0.0,  # 无 dropout
-        is_causal=False  # 非因果掩码（由 mask/bias 显式控制）
+        is_causal=False, # 非因果掩码（由 mask/bias 显式控制）
+        enable_gqa=True
     )
 
 
@@ -138,12 +139,14 @@ def dot_product_attention_sdpa(
     sdpa_mask=attn_mask+bias
     # print('q.shape',q.shape,'k.shape',k.shape,'v.shape',v.shape,'attn_mask.shape',attn_mask.shape)
     # print("sdpa execute")
-
+    # with sdpa_kernel(backends=[SDPBackend.MATH]):
     return torch.nn.functional.scaled_dot_product_attention(
         q, k, v,
         attn_mask=sdpa_mask,  # 合并后的掩码和偏置
         dropout_p=0.0,  # 无 dropout
-        is_causal=False  # 非因果掩码（由 mask/bias 显式控制）
+        is_causal=False , # 非因果掩码（由 mask/bias 显式控制）
+        # enable_gqa = True
+
     )
 
 

@@ -279,7 +279,6 @@ class GridSelfAttention(nn.Module):
         bias1 = self.pair_bias_projection1(pair).permute(2, 0, 1)
         # print(bias1.shape)
 
-
         weighted_avg1 = dot_product_attention(q1, k1, v1,
                                                     mask=mask,
                                                     bias=bias1)

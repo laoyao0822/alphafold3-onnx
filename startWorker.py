@@ -34,6 +34,9 @@ from alphafold3.model import post_processing
 from alphafold3.model import model
 from alphafold3.model.components import utils
 
+from target_feat.misc import params as target_feat_params
+from target_feat.TargetFeat import  TargetFeat
+
 from torchfold3.config import *
 
 _HOME_DIR = pathlib.Path(os.environ.get('HOME'))
@@ -143,6 +146,12 @@ class ModelRunner:
             setup(_RANK_.value, _WOLRD_SIZE.value)
         self._model = torchWorker.alphafold3.AlphaFold3(num_samples=_NUM_DIFFUSION_SAMPLES.value)
         self._model.eval()
+
+        self.target_feat = TargetFeat()
+        self.target_feat.eval()
+        target_feat_params.import_jax_weights_(self.target_feat,model_dir)
+
+
         print('loading the model parameters...')
         import_jax_weights_(self._model, model_dir)
 
@@ -187,13 +196,15 @@ class ModelRunner:
             dtype=torch.float32)
 
         if _CPU_INFERENCE.value == False:
-            if _CUDA_AMP_OPT:
-                with torch.amp.autocast(device_type="cuda", dtype=torch.bfloat16):
-                    print("Running inference with AMP on GPU...")
-                    self._model(featurised_example)
-            else:
-                print("Running inference without AMP on GPU...")
-                self._model(featurised_example)
+            print('did not support tc_malloc')
+            exit(0)
+            # if _CUDA_AMP_OPT:
+            #     with torch.amp.autocast(device_type="cuda", dtype=torch.bfloat16):
+            #         print("Running inference with AMP on GPU...")
+            #         self._model(featurised_example)
+            # else:
+            #     print("Running inference without AMP on GPU...")
+            #     self._model(featurised_example)
         else:  # CPU Inference
             if _CPU_AMP_OPT:
                 with torch.amp.autocast(device_type="cpu", dtype=torch.bfloat16):

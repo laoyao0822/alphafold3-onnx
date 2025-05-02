@@ -23,10 +23,8 @@ import diffusionWorker2.misc.feat_batch as feat_batch
 from diffusionWorker2.network import diffusion_head
 from diffusionWorker2.network.diffusion_step import DiffusionStep
 from diffusionWorker2.network.dot_product_attention import get_attn_mask
-from openvino import convert_model
 import onnx
 import numpy as np
-from diffusionWorker2.network.onnxop import convert_aten_layer_norm
 class diffusion():
     def __init__(self, num_recycles: int = 10, num_samples: int = 5,diffusion_steps: int = 200):
         super(diffusion, self).__init__()

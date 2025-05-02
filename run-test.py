@@ -30,9 +30,8 @@ import torch
 import torch._dynamo
 torch._dynamo.config.suppress_errors = True
 import torch.utils._pytree as pytree
-import onnxruntime as ort
 
-import openvino as ov
+
 from torchfold3.alphafold3 import AlphaFold3
 from torchfold3.misc.params import import_jax_weights_
 from target_feat.TargetFeat import  TargetFeat
@@ -227,7 +226,7 @@ class ModelRunner:
         else:
             print('import evoformer torch')
             self.evoformer=EvoFormerOne()
-            self.evoformer.evoformer.eval()
+            self.evoformer.eval()
             evoformer_params.import_evoformer_jax_weights_(self.evoformer.evoformer,model_dir)
 
         # diffusion=onnx.load('/root/pycharm/diffusion_onnx5/diffusion.onnx',load_external_data=True)
@@ -274,7 +273,7 @@ class ModelRunner:
                 self._model = ipex.optimize(self._model,weights_prepack=False,optimize_lstm=True,auto_kernel_selection=True,dtype=torch.bfloat16)
 
                 self.target_feat = ipex.optimize(self.target_feat,weights_prepack=False,optimize_lstm=True,auto_kernel_selection=True,dtype=torch.bfloat16)
-                self.evoformer.evoformer = ipex.optimize(self.evoformer.evoformer,weights_prepack=False,optimize_lstm=True,auto_kernel_selection=True,dtype=torch.bfloat16)
+                self.evoformer = ipex.optimize(self.evoformer,weights_prepack=False,optimize_lstm=True,auto_kernel_selection=True,dtype=torch.bfloat16)
                 # self.evoformer.evoformer = torch.compile(self.evoformer.evoformer, backend="ipex")
                 if not UseVino:
                     self.diffusion.diffusion_head = ipex.optimize(self.diffusion.diffusion_head,weights_prepack=False,optimize_lstm=True,auto_kernel_selection=True,dtype=torch.bfloat16)
@@ -336,8 +335,6 @@ class ModelRunner:
                     seq_mask = batch.token_features.mask
                     num_tokens = seq_mask.shape[0]
 
-
-
                     target_feat = self.target_feat(
                         aatype=batch.token_features.aatype,
                         profile=batch.msa.profile,
@@ -363,22 +360,22 @@ class ModelRunner:
                         ref_charge=batch.ref_structure.charge,
                         ref_atom_name_chars=batch.ref_structure.atom_name_chars,
                         ref_space_uid=batch.ref_structure.ref_space_uid
-                    )
-                    attn_mask_seq = get_attn_mask(mask=seq_mask, dtype=torch.float32, device='cpu', num_heads=16,
-                                                  seq_len=num_tokens, batch_size=1)
+                    ).contiguous()
+                    attn_mask_seq = get_attn_mask(mask=seq_mask, dtype=torch.bfloat16, device='cpu', num_heads=16,
+                                                  seq_len=num_tokens, batch_size=1).contiguous()
                     pair_mask = seq_mask[:, None] * seq_mask[None, :]
-                    attn_mask_4 = get_attn_mask(mask=pair_mask, dtype=torch.float32,
+                    attn_mask_4 = get_attn_mask(mask=pair_mask, dtype=torch.bfloat16,
                                                               device='cpu',
                                                               batch_size=num_tokens,
-                                                              num_heads=4, seq_len=num_tokens)
-                    pair_mask = pair_mask.to(dtype=torch.float32)
+                                                              num_heads=4, seq_len=num_tokens).contiguous()
+                    pair_mask = pair_mask.to(dtype=torch.bfloat16).contiguous()
                     if SAVE_EVO_ONNX:
                         self.evoformer.getOnnxModel(featurised_example,target_feat,EVO_ONNX_PATH)
 
                     target_feat_c=target_feat.clone()
                     print("create target feat cost time %.2f seconds"% (time.time()-time1))
                     time1=time.time()
-                    embeddings=self.evoformer.forward(featurised_example,target_feat,attn_mask_4, pair_mask)
+                    embeddings=self.evoformer(batch,target_feat,attn_mask_4=attn_mask_4, pair_mask=pair_mask,attn_mask_seq=attn_mask_seq)
                     target_feat=target_feat_c
                     print("Evoformer took %.2f seconds" % (time.time()-time1))
                     # exit(0)
@@ -400,7 +397,6 @@ class ModelRunner:
                     sample_mask = batch.predicted_structure_info.atom_mask
                     # samples = self._sample_diffusion(batch, embeddings)
                     confidence_output_per_sample = []
-
                     # positions = torch.randn(
                     #     pred_dense_atom_mask.shape + (3,), device='cpu').contiguous()
                     for i in range(_NUM_DIFFUSION_SAMPLES.value):

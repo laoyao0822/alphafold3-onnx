@@ -23,27 +23,7 @@ from alphafold3.constants import residue_names
 from evoformer.misc import protein_data_processing
 from evoformer.network.dot_product_attention import get_attn_mask
 
-from torch.onnx import register_custom_op_symbolic
-from torch.onnx.symbolic_helper import parse_args
-from torch.onnx.symbolic_helper import _get_tensor_dim_size, parse_args
-@parse_args("v", "v", "v", "v", "f", "b", "f", "b")
-def symbolic_scaled_dot_product_attention(
-    g, query, key, value, attn_mask, scale, is_causal, dropout_p, return_debug_mask
-):
-    batch_dim = _get_tensor_dim_size(query, 0)  # "N"
-    head_dim = _get_tensor_dim_size(query, 1)  # 固定头数（若需动态则用符号）
-    seq_len_dim = _get_tensor_dim_size(query, 2)  # "L"
-    embed_dim = _get_tensor_dim_size(query, 3)  # 固定嵌入维度
-    output_shape = [batch_dim, head_dim, seq_len_dim, embed_dim]
-    # 创建输出节点并显式设置形状
-    output = g.op(
-        "openvino::scaled_dot_product_attention",
-        query, key, value, attn_mask,
-        scale_f=scale,
-        causal_i=int(is_causal)
-    ).setType(query.type().with_sizes(output_shape))
-    # 忽略 dropout_p 和 return_debug_mask（推理时不需）
-    return output
+
 from onnxscript import opset22 as op
 #适用于dynamo分解sdpa
 def custom_scaled_dot_product_attention(
@@ -71,36 +51,6 @@ def custom_scaled_dot_product_attention(
     return output
 
 
-from torch.onnx import register_custom_op_symbolic
-from torch.onnx.symbolic_helper import parse_args
-
-
-@parse_args("v", "v", "i")
-def symbolic_take_along_dim(g, input, indices, dim):
-    # 添加维度对齐（若 indices 维度少于 input）
-    input_rank = g.op("Size", g.op("Shape", input))  # Tensor[INT64]
-    indices_rank = g.op("Size", g.op("Shape", indices))  # Tensor[INT64]
-
-    # 计算需要扩展的维度数（动态计算）
-    delta_rank = g.op("Sub", input_rank, indices_rank)  # Tensor[INT64]
-
-    # 生成扩展轴列表 [-1, -2, ... ]（动态生成）
-    axes = g.op(
-        "Range",
-        g.op("Constant", value_t=torch.tensor(-1, dtype=torch.int64)),
-        g.op("Sub",
-             g.op("Constant", value_t=torch.tensor(-1, dtype=torch.int64)),
-             delta_rank),
-        g.op("Constant", value_t=torch.tensor(-1, dtype=torch.int64))
-    )
-
-    # 动态扩展维度（一次性完成）
-    expanded_indices = g.op("Unsqueeze", indices, axes)
-
-    # 核心操作映射到 GatherElements
-    return g.op("GatherElements", input, expanded_indices, axis_i=dim)
-
-    # 核心操作映射到 GatherElements
 
 
 # 注册自定义符号函数
@@ -152,20 +102,7 @@ class Evoformer(nn.Module):
         self.trunk_pairformer = nn.ModuleList(
             [PairformerBlock(with_single=True) for _ in range(self.pairformer_num_layer)])
         self.POLYMER_TYPES_NUM_WITH_UNKNOWN_AND_GAP=residue_names.POLYMER_TYPES_NUM_WITH_UNKNOWN_AND_GAP
-    # def _relative_encoding(
-    #     self, batch: feat_batch.Batch, pair_activations: torch.Tensor
-    # ) -> torch.Tensor:
-    #     max_relative_idx = 32
-    #     max_relative_chain = 2
-    #
-    #     rel_feat = featurization.create_relative_encoding(
-    #         batch.token_features,
-    #         max_relative_idx,
-    #         max_relative_chain,
-    #     ).to(dtype=pair_activations.dtype)
-    #
-    #     pair_activations += self.position_activations(rel_feat)
-    #     return pair_activations
+
     def _relative_encoding(
         self, token_index,residue_index,asym_id,entity_id,sym_id,
             pair_activations: torch.Tensor
@@ -187,30 +124,18 @@ class Evoformer(nn.Module):
 
         pair_activations += self.position_activations(rel_feat)
         return pair_activations
-    # def _seq_pair_embedding(
-    #     self, token_features: features.TokenFeatures, target_feat: torch.Tensor
-    # ) -> tuple[torch.Tensor, torch.Tensor]:
-    #     """Generated Pair embedding from sequence."""
-    #     left_single = self.left_single(target_feat)[:, None]
-    #     right_single = self.right_single(target_feat)[None]
-    #     pair_activations = left_single + right_single
-    #
-    #     mask = token_features.mask
-    #
-    #     pair_mask = (mask[:, None] * mask[None, :]).to(dtype=left_single.dtype)
-    #
-    #     return pair_activations, pair_mask
+
 
     def _seq_pair_embedding(
-        self,mask, target_feat: torch.Tensor
-    ) -> tuple[torch.Tensor, torch.Tensor]:
+        self, target_feat: torch.Tensor
+    ) :
         """Generated Pair embedding from sequence."""
         # left_single = self.left_single(target_feat)[:, None]
         # right_single = self.right_single(target_feat)[None]
         # pair_activations = left_single + right_single
         # pair_mask = (mask[:, None] * mask[None, :]).to(dtype=target_feat.dtype)
         # return self.left_single(target_feat)[:, None] + self.right_single(target_feat)[None]
-        return self.left_single(target_feat)[:, None]+self.right_single(target_feat)[None], (mask[:, None] * mask[None, :]).to(dtype=target_feat.dtype)
+        return self.left_single(target_feat)[:, None]+self.right_single(target_feat)[None]
 
 
     def _embed_template_pair(
@@ -323,13 +248,13 @@ class Evoformer(nn.Module):
         # single=prev['single']
         num_tokens = token_index.shape[0]
 
-        pair_activations, pair_mask = self._seq_pair_embedding(
-            seq_mask, target_feat
+        pair_activations = self._seq_pair_embedding(
+            target_feat
         )
         # pair_activations=self._seq_pair_embedding(target_feat)
-        attn_mask_4 = get_attn_mask(mask=pair_mask, dtype=pair_activations.dtype, device=pair_activations.device,
-                                    batch_size=num_tokens,
-                                    num_heads=4, seq_len=num_tokens)
+        # attn_mask_4 = get_attn_mask(mask=pair_mask, dtype=pair_activations.dtype, device=pair_activations.device,
+        #                             batch_size=num_tokens,
+        #                             num_heads=4, seq_len=num_tokens)
 
 
         pair_activations += self.prev_embedding(
@@ -362,6 +287,11 @@ class Evoformer(nn.Module):
             self.prev_single_embedding_layer_norm(single))
 
         # attn_mask_seq = get_attn_mask(mask=seq_mask, dtype=single_activations.dtype, device=pair_activations.device,num_heads=16,seq_len=num_tokens,batch_size=1)
+
+        # pair_mask=pair_mask.to(dtype=pair_activations.dtype)
+        # attn_mask_4=attn_mask_4.to(dtype=pair_activations.dtype)
+        # attn_mask_seq=attn_mask_seq.to(dtype=pair_activations.dtype)
+
 
         #
         pair_activations = self._embed_template_pair(
@@ -405,7 +335,7 @@ class Evoformer(nn.Module):
         # return output
         return single_activations,pair_activations
 
-class EvoFormerOne():
+class EvoFormerOne(nn.Module):
 
     def __init__(self, num_recycles: int = 10, num_samples: int = 5, diffusion_steps: int = 200):
         super(EvoFormerOne, self).__init__()
@@ -517,48 +447,7 @@ class EvoFormerOne():
                       optimize=False,
                       opset_version=opset_version,
                       export_params=True,
-                      # dynamic_axes={
-                      #         # 单序列输入
-                      #         "single": {0: "seq_len"},
-                      #
-                      #         # 配对输入
-                      #         "pair": {0: "seq_len", 1: "seq_len"},
-                      #
-                      #         # 特征类输入
-                      #         "target_feat": {0: "seq_len"},
-                      #
-                      #         # MSA 相关输入
-                      #         "msa": {1: "seq_len"},
-                      #         "msa_mask": {1: "seq_len"},
-                      #         "deletion_matrix": {1: "seq_len"},
-                      #
-                      #         # 索引类输入
-                      #         "token_index": {0: "seq_len"},
-                      #         "residue_index": {0: "seq_len"},
-                      #         "asym_id": {0: "seq_len"},
-                      #         "entity_id": {0: "seq_len"},
-                      #         "sym_id": {0: "seq_len"},
-                      #
-                      #         # 掩码与矩阵
-                      #         "seq_mask": {0: "seq_len"},
-                      #         "contact_matrix": {0: "seq_len", 1: "seq_len"},
-                      #
-                      #         # 模板相关
-                      #         "template_aatype": {1: "seq_len"},
-                      #         "template_atom_positions": {1: "seq_len"},
-                      #         "template_atom_mask": {1: "seq_len"},
-                      #         # 注意力掩码
-                      #         "attn_mask_seq": {2:"seq_len",3: "seq_len"},
-                      #
-                      #         "single_out": {0: "seq_len"},
-                      #
-                      #         # 配对输入
-                      #         "pair_out": {0: "seq_len", 1: "seq_len"},
-                      #     },
-                      # custom_translation_table={
-                      #         # torch.ops.mylibrary.sdpa_vino.default:custom_scaled_dot_product_attention
-                      #         torch.ops.aten.scaled_dot_product_attention.default: custom_scaled_dot_product_attention,
-                      # },
+
                       dynamic_shapes={
                           'single': {0: seq_len},
                           'pair': {0: seq_len, 1: seq_len},
@@ -582,78 +471,7 @@ class EvoFormerOne():
                           'template_atom_mask': {1: seq_len},
                           'attn_mask_seq':{2:seq_len,3:seq_len}
                       },
-                    # custom_opsets = {"openvino.opset15": 15}
                           )
-        # export_program=torch.export.export(self.evoformer,
-        #                   ordered_inputs,
-        #                    strict=False,
-        #                   # dynamic_axes={
-        #                   #         # 单序列输入
-        #                   #         "single": {0: "seq_len"},
-        #                   #
-        #                   #         # 配对输入
-        #                   #         "pair": {0: "seq_len", 1: "seq_len"},
-        #                   #
-        #                   #         # 特征类输入
-        #                   #         "target_feat": {0: "seq_len"},
-        #                   #
-        #                   #         # MSA 相关输入
-        #                   #         "msa": {1: "seq_len"},
-        #                   #         "msa_mask": {1: "seq_len"},
-        #                   #         "deletion_matrix": {1: "seq_len"},
-        #                   #
-        #                   #         # 索引类输入
-        #                   #         "token_index": {0: "seq_len"},
-        #                   #         "residue_index": {0: "seq_len"},
-        #                   #         "asym_id": {0: "seq_len"},
-        #                   #         "entity_id": {0: "seq_len"},
-        #                   #         "sym_id": {0: "seq_len"},
-        #                   #
-        #                   #         # 掩码与矩阵
-        #                   #         "seq_mask": {0: "seq_len"},
-        #                   #         "contact_matrix": {0: "seq_len", 1: "seq_len"},
-        #                   #
-        #                   #         # 模板相关
-        #                   #         "template_aatype": {1: "seq_len"},
-        #                   #         "template_atom_positions": {1: "seq_len"},
-        #                   #         "template_atom_mask": {1: "seq_len"},
-        #                   #         # 注意力掩码
-        #                   #         "attn_mask_seq": {3: "seq_len"},
-        #                   #
-        #                   #         "single_out": {0: "seq_len"},
-        #                   #
-        #                   #         # 配对输入
-        #                   #         "pair_out": {0: "seq_len", 1: "seq_len"},
-        #                   #     },
-        #                   dynamic_shapes={
-        #                       'single': {0: seq_len},
-        #                       'pair': {0: seq_len, 1: seq_len},
-        #                       'target_feat': {0: seq_len},
-        #
-        #                       'msa': {1: seq_len},
-        #                       'msa_mask': {1: seq_len},
-        #                       'deletion_matrix': {1: seq_len},
-        #
-        #                       'token_index': {0: seq_len},
-        #                       'residue_index': {0: seq_len},
-        #                       'asym_id': {0: seq_len},
-        #                       'entity_id': {0: seq_len},
-        #                       'sym_id': {0: seq_len},
-        #
-        #                       'seq_mask': {0: seq_len},
-        #                       'contact_matrix': {0: seq_len, 1: seq_len},
-        #                       # 模板相关
-        #                       'template_aatype': {1: seq_len},
-        #                       'template_atom_positions': {1: seq_len},
-        #                       'template_atom_mask': {1: seq_len},
-        #                       'attn_mask_seq': {2:seq_len ,3: seq_len}
-        #                   },
-        #                   # custom_opsets = {"openvino.opset15": 15}
-        #                   )
-        # print("export program done")
-        # ov_model=ov.convert_model(export_program,verbose=True)
-        # ov.save_model(ov_model,'/root/model.xml')
-
         exit(0)
 
 
@@ -675,7 +493,7 @@ class EvoFormerOne():
 
         # gather_mask_polymer_ligand=gather_mask_polymer_ligand.to(dtype=gather_idxs_polymer_ligand.dtype)
         # gather_mask_ligand_ligand=gather_mask_ligand_ligand.to(dtype=gather_idxs_ligand_ligand.dtype)
-        print(gather_mask_polymer_ligand.dtype, gather_mask_ligand_ligand.dtype)
+        # print(gather_mask_polymer_ligand.dtype, gather_mask_ligand_ligand.dtype)
         gather_idxs = torch.concatenate(
             [ gather_mask_polymer_ligand.to(dtype=torch.int64),
             gather_mask_ligand_ligand.to(dtype=torch.int64)]
@@ -701,38 +519,26 @@ class EvoFormerOne():
         return contact_matrix[:, :, None]
 
 
-    def forward(self, batch: dict[str, torch.Tensor],target_feat
-                ,attn_mask_4,pair_mask,
+    def forward(self, batch,target_feat
+                ,attn_mask_4,pair_mask,attn_mask_seq,
+
+
+
+                # pair_activations,pair_mask,
+
                 ) -> dict[str, torch.Tensor]:
-        batch = feat_batch.Batch.from_data_dict(batch)
+        # batch = feat_batch.Batch.from_data_dict(batch)
         num_res = batch.num_res
         #target_feat torch.Size([37, 447])
         
         # target_feat1=self.create_target_feat_embedding(batch)
         pair= torch.zeros(
                 [num_res, num_res, self.evoformer_pair_channel], device=target_feat.device,
-                dtype=torch.float32,
+                dtype=torch.bfloat16,
             )
         single=torch.zeros(
-                [num_res, self.evoformer_seq_channel], dtype=torch.float32, device=target_feat.device,
+                [num_res, self.evoformer_seq_channel], dtype=torch.bfloat16, device=target_feat.device,
             )
-
-        # template_aatype = batch.templates.aatype
-        # template_atom_positions = batch.templates.atom_positions
-        # template_atom_mask = batch.templates.atom_mask
-        # num_templates = template_aatype.shape[0]
-        #
-        # # print(num_templates)
-        #
-        # pseudo_beta_positions=torch.zeros(size=(num_templates,num_res,3))
-        # pseudo_beta_mask=torch.zeros(size=(num_templates,num_res,3))
-
-        # for template_idx in range(num_templates):
-        #     pb_position, pb_mask = scoring.pseudo_beta_fn(
-        #         template_aatype[template_idx], template_atom_positions[template_idx], template_atom_mask[template_idx]
-        #     )
-        #     pseudo_beta_positions[template_idx] = pb_position
-        #     pseudo_beta_mask[template_idx] = pb_mask
 
         contact_matrix=self.get_contact_matrix(
             gather_idxs_polymer_ligand=batch.polymer_ligand_bond_info.tokens_to_polymer_ligand_bonds.gather_idxs,
@@ -741,29 +547,6 @@ class EvoFormerOne():
             tokens_to_ligand_ligand_bonds_gather_mask = batch.ligand_ligand_bond_info.tokens_to_ligand_ligand_bonds.gather_mask,
             num_tokens=num_res,
         )
-        # pt_path='/root/pycharm/calibration/1024.pt'
-        # torch.save({
-        #     'single': single,
-        #     'pair': pair,
-        #     'target_feat': target_feat,
-        #     'msa': batch.msa.rows,
-        #     'msa_mask': batch.msa.mask,
-        #     'deletion_matrix': batch.msa.deletion_matrix,
-        #     'token_index': batch.token_features.token_index,
-        #     'residue_index': batch.token_features.residue_index,
-        #     'asym_id': batch.token_features.asym_id,
-        #     'entity_id': batch.token_features.entity_id,
-        #     'sym_id': batch.token_features.sym_id,
-        #
-        #     'seq_mask': batch.token_features.mask,
-        #     'contact_matrix': contact_matrix,
-        #     'template_aatype': batch.templates.aatype,
-        #     'template_atom_positions': batch.templates.atom_positions,
-        #     'template_atom_mask': batch.templates.atom_mask,
-        # }, pt_path)
-        # print("success save calibration pt:",pt_path)
-        # exit(0)
-        # print(contact_matrix.shape)
 
         seq_mask = batch.token_features.mask
         num_tokens = seq_mask.shape[0]
@@ -775,9 +558,9 @@ class EvoFormerOne():
         # attn_mask_4 = get_attn_mask(mask=pair_mask, dtype=pair_activations.dtype, device=pair_activations.device,
         #                             batch_size=num_tokens,
         #                             num_heads=4, seq_len=num_tokens)
-        attn_mask_seq = get_attn_mask(mask=seq_mask, dtype=torch.float32, device='cpu',num_heads=16,seq_len=num_tokens,batch_size=1)
+        # attn_mask_seq = get_attn_mask(mask=seq_mask, dtype=torch.float32, device='cpu',num_heads=16,seq_len=num_tokens,batch_size=1)
 
-
+        template_atom_positions=batch.templates.atom_positions.to(dtype=torch.bfloat16)
 
         # time1=time.time()
         for _ in range(self.num_recycles + 0):
@@ -805,7 +588,7 @@ class EvoFormerOne():
                 # t_o_lig_idxs = batch.ligand_ligand_bond_info.tokens_to_ligand_ligand_bonds.gather_idxs,
                 # t_o_lig_masks = batch.ligand_ligand_bond_info.tokens_to_ligand_ligand_bonds.gather_mask,
                 template_aatype = batch.templates.aatype,
-                template_atom_positions = batch.templates.atom_positions,
+                template_atom_positions = template_atom_positions,
                 template_atom_mask = batch.templates.atom_mask,
 
                 # pair_activations = pair_activations,
@@ -903,8 +686,8 @@ class EvoformerVino():
         contact_matrix[0, 0] = 0.0
         return contact_matrix[:, :, None]
 
-    def forward(self, batch: dict[str, torch.Tensor], target_feat_t) -> dict[str, torch.Tensor]:
-        batch = feat_batch.Batch.from_data_dict(batch)
+    def forward(self, batch, target_feat_t) -> dict[str, torch.Tensor]:
+        # batch = feat_batch.Batch.from_data_dict(batch)
         num_res = batch.num_res
         # target_feat torch.Size([37, 447])
 
