@@ -32,8 +32,8 @@ class diffusion():
         super(diffusion, self).__init__()
         self.num_recycles = num_recycles
         self.num_samples = num_samples
-        # self.diffusion_steps = diffusion_steps
-        self.diffusion_steps = 2
+        self.diffusion_steps = diffusion_steps
+        # self.diffusion_steps = 2
         self.gamma_0 = 0.8
         self.gamma_min = 1.0
         self.noise_scale = 1.003
@@ -211,60 +211,6 @@ class diffusion():
         # print("save onnx done:", save_path)
         # exit(0)
 
-    def initOnnxModel(self,onnx_path):
-        check_model=onnx.load(onnx_path,load_external_data=True)
-        onnx.checker.check_model(check_model)
-        print("ONNX DIFFUSION check success")
-        print("available provider",ort.get_available_providers())
-        sess_options = ort.SessionOptions()
-        # device_type = "CPU_FP16"
-        # sess_options.num_of_threads = 59
-        # sess_options.spip install onnxruntime-openvino
-        # sess_options.enable_profiling = True
-        # sess_options.intra_op_num_threads = 60
-        # sess_options.add_session_config_entry('session.intra_op_thread_affinities','1;2;3;4;5;6;7;8;9;10;11;12;13;14;15;16;17;18;19;20;21;22;23;24;25;26;27;28;29;30;31;32;33;34;35;36;37;38;39;40;41;42;43;44;46;47;48;49;50;51;52;53;54;55;56;57;58;59;60')  # set affinities of all 7 threads to cores in the first NUMA node
-        sess_options.execution_mode = ort.ExecutionMode.ORT_PARALLEL
-        sess_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_EXTENDED
-        # sess_options.optimized_model_filepath = "/root/pycharm/diffusion_head_onnx_opt/diffusion_head.onnx"
-        # vino_device='CPU_FP32'
-        ort.set_default_logger_severity(3)
-        # providers = [("OpenVINOExecutionProvider", {
-        #     "device_type": "CPU",  # 自动检测AMX
-        #     "precision": "FP32",  # 启用BF16
-        #     # "num_threads": 59,  # 根据CPU核心数调整
-        # })]
-    # sess_options.AddConfigEntry(ort.SessionOptions.kOrtSessionOptionEpContextEnable, "1");
-        session = ort.InferenceSession(onnx_path, sess_options=sess_options,provider_options=['CPUExecutionProvider'])
-        # session = ort.InferenceSession(onnx_path,options=sess_options,providers=providers)
-        # session.set_providers(['OpenVINOExecutionProvider'],[{'device_type':device_type,'num_of_threads':59}])
-        self.onnx_model = session
-    def initOpenvinoModel(self,openvino_path):
-        self.core = ov.Core()
-        # self.core.set_property(
-        # "CPU",
-        #     {   properties.hint.execution_mode: properties.hint.ExecutionMode.PERFORMANCE,
-        #         },
-        #     )
-        # 加载模型
-        self.openvino = self.core.read_model(model=openvino_path)
-        # 编译模型
-        config = {
-            properties.hint.performance_mode: properties.hint.PerformanceMode.LATENCY,
-            properties.inference_num_threads:60,
-            properties.hint.inference_precision: 'bf16',
-            # properties.hint.execution_mode: properties.hint.ExecutionMode.PERFORMANCE
-            # properties.num_streams:1,
-            # "CPU_THREADS_NUM": "60",
-            # "CPU_BIND_THREAD": "YES",
-        }
-        self.compiled_model = self.core.compile_model(
-            model=self.openvino,
-            device_name='CPU',
-            config=config,
-        )
-        # 获取输入/输出信息
-        self.inputs_info = self.compiled_model.inputs
-        self.outputs_info = self.compiled_model.outputs
 
     def _apply_denoising_step(
             self,
@@ -315,8 +261,7 @@ class diffusion():
         # print("positions_noisy:",positions_noisy.shape)
         # positions_denoised=None
         # print("that ",t_hat.dtype,"noise_level",noise_level.dtype)
-        if not USE_ONNX:
-            positions_out = self.diffusion_head(
+        positions_out = self.diffusion_head(
             single=single, pair=pair, target_feat=target_feat,
             token_index=token_index, residue_index=residue_index,
             asym_id=asym_id, entity_id=entity_id, sym_id=sym_id,
@@ -341,72 +286,7 @@ class diffusion():
             # embeddings=embeddings,
             # use_conditioning=True
             )
-        else:
-            time1=time.time()
-            inputs = {
-                "single":single.cpu().numpy().astype(np.float32),
-                "pair": pair.cpu().numpy().astype(np.float32),
-                "target_feat": target_feat.cpu().numpy().astype(np.float32),
-                "token_index": token_index.numpy().astype(np.int32),
-                "residue_index": residue_index.numpy().astype(np.int32),
-                "asym_id": asym_id.numpy().astype(np.int32),
-                "entity_id": entity_id.numpy().astype(np.int32),
-                "sym_id": sym_id.numpy().astype(np.int32),
-                "seq_mask": seq_mask.numpy().astype(np.bool),
-                "pred_dense_atom_mask": pred_dense_atom_mask.numpy().astype(np.bool),
 
-                "ref_ops": ref_ops.numpy().astype(np.float32),
-                "ref_mask": ref_mask.numpy().astype(np.bool),
-                "ref_element": ref_element.numpy().astype(np.int32),
-                "ref_charge": ref_charge.numpy().astype(np.float32),
-                "ref_atom_name_chars": ref_atom_name_chars.numpy().astype(np.int32),
-                "ref_space_uid": ref_space_uid.numpy().astype(np.int32),
-             # 交叉注意力相关输入（以 acat_ 开头的参数）
-                "acat_atoms_to_q_gather_idxs": acat_atoms_to_q_gather_idxs.numpy().astype(
-                np.int64),
-                "acat_atoms_to_q_gather_mask": acat_atoms_to_q_gather_mask.numpy().astype(
-                np.bool),
-                "acat_q_to_k_gather_idxs": acat_q_to_k_gather_idxs.numpy().astype(
-                np.int64),
-                "acat_q_to_k_gather_mask": acat_q_to_k_gather_mask.numpy().astype(
-                np.bool),
-                "acat_t_to_q_gather_idxs": acat_t_to_q_gather_idxs.numpy().astype(
-                np.int64),
-                "acat_t_to_q_gather_mask": acat_t_to_q_gather_mask.numpy().astype(
-                np.bool),
-                "acat_q_to_atom_gather_idxs": acat_q_to_atom_gather_idxs.numpy().astype(
-                np.int64),
-                "acat_q_to_atom_gather_mask": acat_q_to_atom_gather_mask.numpy().astype(
-                np.bool),
-                "acat_t_to_k_gather_idxs": acat_t_to_k_gather_idxs.numpy().astype(
-                np.int64),
-                "acat_t_to_k_gather_mask": acat_t_to_k_gather_mask.numpy().astype(
-                np.bool),
-                # 'positions_noisy': positions_noisy.numpy(),
-                # 'noise_level': t_hat.numpy(),
-                'positions': positions.numpy(),
-                'noise_level_prev': noise_level_prev.numpy(),
-                'noise_level': noise_level.numpy(),
-        }
-            infer_request = self.compiled_model.create_infer_request()
-
-            idx=0
-            # 将数据填充到输入张量
-            for value in inputs.values():
-                # input_names = input_key.names
-                # input_name = input_key.get_any_name()
-                # print("input_name", input_name," index" ,input_key.get_index())
-                ov_tensor = ov.Tensor(value)
-                # if input_name in inputs:
-                infer_request.set_input_tensor(idx, ov_tensor)
-                idx+=1
-            self.conversion_time+=time.time()-time1
-            # 执行同步推理
-            infer_request.infer()
-            # --------------------------- 获取输出 ------------------------------
-            # 获取输出张量 (假设第一个输出是 positions_denoised)
-            output_tensor = infer_request.get_output_tensor(0)
-            positions_out = torch.from_numpy(output_tensor.data)
 
         #step1
         # grad = (positions_noisy - positions_denoised) / t_hat

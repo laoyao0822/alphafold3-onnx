@@ -21,6 +21,7 @@ import torchWorker.misc.params as params
 import torch.distributed as dist
 from torchWorker.alphafold3 import AlphaFold3
 from torchWorker.misc.params import import_jax_weights_
+
 import torch
 
 from alphafold3.common import folding_input

@@ -366,19 +366,19 @@ class ModelRunner:
                     )
                     attn_mask_seq = get_attn_mask(mask=seq_mask, dtype=torch.float32, device='cpu', num_heads=16,
                                                   seq_len=num_tokens, batch_size=1)
-                    pair_mask_confidence = seq_mask[:, None] * seq_mask[None, :]
-                    pair_mask_confidence_attn = get_attn_mask(mask=pair_mask_confidence, dtype=torch.float32,
+                    pair_mask = seq_mask[:, None] * seq_mask[None, :]
+                    attn_mask_4 = get_attn_mask(mask=pair_mask, dtype=torch.float32,
                                                               device='cpu',
                                                               batch_size=num_tokens,
                                                               num_heads=4, seq_len=num_tokens)
-                    pair_mask_confidence = pair_mask_confidence.to(dtype=torch.float32)
+                    pair_mask = pair_mask.to(dtype=torch.float32)
                     if SAVE_EVO_ONNX:
                         self.evoformer.getOnnxModel(featurised_example,target_feat,EVO_ONNX_PATH)
 
                     target_feat_c=target_feat.clone()
                     print("create target feat cost time %.2f seconds"% (time.time()-time1))
                     time1=time.time()
-                    embeddings=self.evoformer.forward(featurised_example,target_feat)
+                    embeddings=self.evoformer.forward(featurised_example,target_feat,attn_mask_4, pair_mask)
                     target_feat=target_feat_c
                     print("Evoformer took %.2f seconds" % (time.time()-time1))
                     # exit(0)
@@ -421,7 +421,7 @@ class ModelRunner:
                         time1=time.time()
                         confidence_output = self.confidence.forward(batch=featurised_example,
                                                                 embeddings=embeddings, positions=positions[i],attn_seq_mask=attn_mask_seq,
-                                                                    pair_mask=pair_mask_confidence,attn_pair_mask=pair_mask_confidence_attn)
+                                                                    pair_mask=pair_mask,attn_pair_mask=attn_mask_4)
                         confidence_output_per_sample.append(confidence_output)
                         print("confidence output time: ", time.time() - time1)
 

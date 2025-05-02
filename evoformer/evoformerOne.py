@@ -202,13 +202,14 @@ class Evoformer(nn.Module):
     #     return pair_activations, pair_mask
 
     def _seq_pair_embedding(
-        self, mask, target_feat: torch.Tensor
+        self,mask, target_feat: torch.Tensor
     ) -> tuple[torch.Tensor, torch.Tensor]:
         """Generated Pair embedding from sequence."""
         # left_single = self.left_single(target_feat)[:, None]
         # right_single = self.right_single(target_feat)[None]
         # pair_activations = left_single + right_single
         # pair_mask = (mask[:, None] * mask[None, :]).to(dtype=target_feat.dtype)
+        # return self.left_single(target_feat)[:, None] + self.right_single(target_feat)[None]
         return self.left_single(target_feat)[:, None]+self.right_single(target_feat)[None], (mask[:, None] * mask[None, :]).to(dtype=target_feat.dtype)
 
 
@@ -312,7 +313,8 @@ class Evoformer(nn.Module):
         template_aatype, template_atom_positions, template_atom_mask,
 
         # pair_activations,pair_mask,
-        # attn_mask_4,
+        attn_mask_4,
+        pair_mask,
         attn_mask_seq
     ) :
         # target_feat_c=target_feat.clone()
@@ -324,6 +326,7 @@ class Evoformer(nn.Module):
         pair_activations, pair_mask = self._seq_pair_embedding(
             seq_mask, target_feat
         )
+        # pair_activations=self._seq_pair_embedding(target_feat)
         attn_mask_4 = get_attn_mask(mask=pair_mask, dtype=pair_activations.dtype, device=pair_activations.device,
                                     batch_size=num_tokens,
                                     num_heads=4, seq_len=num_tokens)
@@ -407,7 +410,9 @@ class EvoFormerOne():
     def __init__(self, num_recycles: int = 10, num_samples: int = 5, diffusion_steps: int = 200):
         super(EvoFormerOne, self).__init__()
 
-        self.num_recycles = 1
+        self.num_recycles = num_recycles
+        # self.num_recycles = 1
+
         self.num_samples = num_samples
 
         self.evoformer_pair_channel = 128
@@ -417,7 +422,7 @@ class EvoFormerOne():
 
 
     def getOnnxModel(self, batch, target_feat, save_path, ):
-        batch = feat_batch.Batch.from_data_dict(batch)
+        # batch = feat_batch.Batch.from_data_dict(batch)
         num_res = batch.num_res
         pair = torch.zeros(
             [num_res, num_res, self.evoformer_pair_channel], device=target_feat.device,
@@ -696,7 +701,9 @@ class EvoFormerOne():
         return contact_matrix[:, :, None]
 
 
-    def forward(self, batch: dict[str, torch.Tensor],target_feat) -> dict[str, torch.Tensor]:
+    def forward(self, batch: dict[str, torch.Tensor],target_feat
+                ,attn_mask_4,pair_mask,
+                ) -> dict[str, torch.Tensor]:
         batch = feat_batch.Batch.from_data_dict(batch)
         num_res = batch.num_res
         #target_feat torch.Size([37, 447])
@@ -802,8 +809,8 @@ class EvoFormerOne():
                 template_atom_mask = batch.templates.atom_mask,
 
                 # pair_activations = pair_activations,
-                # pair_mask=pair_mask,
-                # attn_mask_4=attn_mask_4,
+                pair_mask=pair_mask,
+                attn_mask_4=attn_mask_4,
                 attn_mask_seq=attn_mask_seq,
                 # prev=embeddings,
             )

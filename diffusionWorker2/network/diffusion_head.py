@@ -297,7 +297,6 @@ class DiffusionHead(nn.Module):
         )
 
         act = self.transformer(
-
             act=act,
             single_cond=trunk_single_cond,
             mask=seq_mask,

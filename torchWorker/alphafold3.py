@@ -75,13 +75,13 @@ class Evoformer(nn.Module):
         self._embed_template_pair(num_res)
         # T2 = time.time()
         # print(f"pair embedding time: {T2 - T1}")
+
         self._embed_process_msa(
             num_res
         )
 
         for pairformer_b in self.trunk_pairformer:
             pairformer_b(num_res)
-
 
         return
 
