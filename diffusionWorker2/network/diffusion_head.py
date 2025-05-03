@@ -18,7 +18,7 @@ from diffusionWorker2.network.diffusion_transformer import DiffusionTransformer,
 from diffusionWorker2.network.atom_cross_attention import AtomCrossAttEncoder, AtomCrossAttDecoder
 # from diffusionWorker2.network.layer_norm import LayerNorm
 from torch.nn import LayerNorm
-
+import time
 # Carefully measured by averaging multimer training set.
 SIGMA_DATA = 16.0
 
@@ -149,6 +149,7 @@ class DiffusionHead(nn.Module):
         self.gamma_min = 1.0
         self.noise_scale = 1.003
         self.step_scale = 1.5
+        self.sum_time=0
 
     def _conditioning(
         self,
@@ -296,12 +297,15 @@ class DiffusionHead(nn.Module):
             self.single_cond_embedding_norm(trunk_single_cond)
         )
 
+        # time1=time.time()
         act = self.transformer(
             act=act,
             single_cond=trunk_single_cond,
             mask=seq_mask,
             pair_cond=trunk_pair_cond,
         )
+        # self.sum_time+=time.time()-time1
+        # print(time.time() - time1)
         act = self.output_norm(act)
 
         # (Possibly) atom-granularity decoder

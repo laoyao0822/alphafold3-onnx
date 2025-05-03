@@ -127,26 +127,37 @@ def get_attn_mask_withqk(mask,q,k):
 
 
 execute_time=0
+import time
 
 # @torch._dynamo.disallow_in_graph
+
 def dot_product_attention_sdpa(
         q: torch.Tensor,
         k: torch.Tensor,
         v: torch.Tensor,
         attn_mask,
-        bias: Optional[torch.Tensor] = None
+        bias
 ) -> torch.Tensor:
-    sdpa_mask=attn_mask+bias
-    # print('q.shape',q.shape,'k.shape',k.shape,'v.shape',v.shape,'attn_mask.shape',attn_mask.shape)
-    # print("sdpa execute")
-    # with sdpa_kernel(backends=[SDPBackend.MATH]):
+    # sdpa_mask=bias
+    # bias=bias.contiguous()
+    bias=bias.unsqueeze(0).contiguous()
+    # print('bias ',bias.dtype,q.dtype,k.dtype,v.dtype)
+    # time1=time.time()
+    # if attn_mask is not None:
+    # bias=attn_mask+bias
+    # if attn_mask.dtype==torch.bool:
+    #     bias = bias.expand(q.size(0),-1,-1,-1).masked_fill(attn_mask, -torch.inf)
+    # else:
+    #     bias=attn_mask+bias
+
+    # print("sdpa cost",time.time()-time1,'attn mask shape',attn_mask.shape,'bias shape',bias.shape)
+
     return torch.nn.functional.scaled_dot_product_attention(
         q, k, v,
-        attn_mask=sdpa_mask,  # 合并后的掩码和偏置
+        attn_mask=bias,  # 合并后的掩码和偏置
         dropout_p=0.0,  # 无 dropout
         is_causal=False , # 非因果掩码（由 mask/bias 显式控制）
         # enable_gqa = True
-
     )
 
 

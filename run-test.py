@@ -31,6 +31,7 @@ import torch._dynamo
 torch._dynamo.config.suppress_errors = True
 import torch.utils._pytree as pytree
 
+from torch.profiler import profile, record_function, ProfilerActivity
 
 from torchfold3.alphafold3 import AlphaFold3
 from torchfold3.misc.params import import_jax_weights_
@@ -111,7 +112,7 @@ _CPU_INFERENCE = flags.DEFINE_bool(
 # control the number of threads used by the data pipeline.
 _NUM_THREADS = flags.DEFINE_integer(
     'num_cpu_threads',
-    119,
+    60,
     'Number of threads to use for the data pipeline.',
 )
 
@@ -285,6 +286,7 @@ class ModelRunner:
                 # self.diffusion.diffusion_head=torch.compile(self.diffusion.diffusion_head, backend="openvino",dynamic=False,options=opts)
                 # self.evoformer
                 # ov_model=ov.convert_model()
+
             if _CPU_FLUSH_DENORM_OPT:
                 torch.set_flush_denormal(True)
                 
@@ -332,7 +334,7 @@ class ModelRunner:
                     # exit(0)
                     batch = feat_batch.Batch.from_data_dict(featurised_example)
                     time1=time.time()
-                    seq_mask = batch.token_features.mask
+                    seq_mask = batch.token_features.mask.contiguous()
                     num_tokens = seq_mask.shape[0]
 
                     target_feat = self.target_feat(
@@ -361,24 +363,44 @@ class ModelRunner:
                         ref_atom_name_chars=batch.ref_structure.atom_name_chars,
                         ref_space_uid=batch.ref_structure.ref_space_uid
                     ).contiguous()
+
                     attn_mask_seq = get_attn_mask(mask=seq_mask, dtype=torch.bfloat16, device='cpu', num_heads=16,
                                                   seq_len=num_tokens, batch_size=1).contiguous()
                     pair_mask = seq_mask[:, None] * seq_mask[None, :]
+
                     attn_mask_4 = get_attn_mask(mask=pair_mask, dtype=torch.bfloat16,
                                                               device='cpu',
                                                               batch_size=num_tokens,
                                                               num_heads=4, seq_len=num_tokens).contiguous()
-                    pair_mask = pair_mask.to(dtype=torch.bfloat16).contiguous()
+                    # print("zero count",(seq_mask == False).sum().item())
+
+                    # print(pair_mask[0])
+                    #seq_mask shape torch.Size([1491])
+                    print("seq mask pair mask shape ",pair_mask.shape,seq_mask.shape)
+                    print("zero count",(pair_mask == False).sum().item())
+
+                    # attn_mask_4=pair_mask.to(torch.bool)[:, None, None, :].expand(-1,4,-1,-1).contiguous()
+                    pair_mask = pair_mask.to(dtype=torch.bool).contiguous()
+
+                    # attn_mask_seq_c=attn_mask_seq.clone()
+                    # pair_mask_c=pair_mask.clone()
+                    # attn_mask_4_c=attn_mask_4.clone()
+
+
                     if SAVE_EVO_ONNX:
                         self.evoformer.getOnnxModel(featurised_example,target_feat,EVO_ONNX_PATH)
 
-                    target_feat_c=target_feat.clone()
+                    # target_feat_c=target_feat.clone()
                     print("create target feat cost time %.2f seconds"% (time.time()-time1))
                     time1=time.time()
+                    # with profile(activities=[ProfilerActivity.CPU],
+                                 # profile_memory=False, record_shapes=False) as prof:
                     embeddings=self.evoformer(batch,target_feat,attn_mask_4=attn_mask_4, pair_mask=pair_mask,attn_mask_seq=attn_mask_seq)
-                    target_feat=target_feat_c
-                    print("Evoformer took %.2f seconds" % (time.time()-time1))
+                    # print(prof.key_averages().table(sort_by="cpu_time_total", row_limit=500))
                     # exit(0)
+                    # target_feat=target_feat_c
+                    print("Evoformer took %.2f seconds" % (time.time()-time1))
+
 
                     pred_dense_atom_mask = batch.predicted_structure_info.atom_mask
 
@@ -403,9 +425,13 @@ class ModelRunner:
                         # print("diffusion sample %d" % i)
                         time1 = time.time()
                         if not UseVino:
+                            # with profile(activities=[ProfilerActivity.CPU],
+                            # profile_memory=False, record_shapes=False) as prof:
                             positions[i] = self.diffusion.forward(featurised_example,single=embeddings['single'], pair=embeddings['pair'],
-                                                      target_feat=target_feat,USE_ONNX=False
+                                                      target_feat=target_feat,seq_mask=seq_mask,
                                                       )
+                            # print(prof.key_averages().table(sort_by="cpu_time_total", row_limit=500))
+                            # exit(0)
 
 
                         else:
@@ -415,10 +441,15 @@ class ModelRunner:
                                                       )
                         print("diffusion cost time: ", time.time() - time1)
                         time1=time.time()
-                        confidence_output = self.confidence.forward(batch=featurised_example,
+                        confidence_output = self.confidence.forward(batch=batch,
                                                                 embeddings=embeddings, positions=positions[i],attn_seq_mask=attn_mask_seq,
                                                                     pair_mask=pair_mask,attn_pair_mask=attn_mask_4)
                         confidence_output_per_sample.append(confidence_output)
+
+
+                        # assert torch.allclose(pair_mask, pair_mask_c)
+                        # assert torch.allclose(attn_mask_4, attn_mask_4_c)
+                        # assert torch.allclose(attn_mask_seq, attn_mask_seq_c)
                         print("confidence output time: ", time.time() - time1)
 
                     confidence_output = {}

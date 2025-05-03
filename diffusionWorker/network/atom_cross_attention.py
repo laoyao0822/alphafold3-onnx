@@ -312,23 +312,7 @@ class AtomCrossAttEncoder(nn.Module):
             # Create the GatherInfo into a flattened trunk_pair_cond from the
             # queries and keys gather infos.
             num_tokens = trunk_pair_cond.shape[0]
-            # (num_subsets, num_queries)
-            # tokens_to_queries = batch.atom_cross_att.tokens_to_queries
-            # # (num_subsets, num_keys)
-            # tokens_to_keys = batch.atom_cross_att.tokens_to_keys
-            # (num_subsets, num_queries, num_keys)
-            # trunk_pair_to_atom_pair = atom_layout.GatherInfo(
-            #     gather_idxs=(
-            #         num_tokens * acat_t_to_q_gather_idxs[:, :, None]
-            #         + acat_t_to_k_gather_idxs[:, None, :]
-            #     ),
-            #     gather_mask=(
-            #         acat_t_to_q_gather_mask[:, :, None]
-            #         & acat_t_to_k_gather_mask[:, None, :]
-            #     ),
-            #     input_shape=torch.tensor((num_tokens, num_tokens), device=torch.device(trunk_pair_cond.device)),
-            # )
-            # Gather the conditioning and add it to the atom-pair activations.
+
             pair_act += atom_layout.convertV2(
                 num_tokens * acat_t_to_q_gather_idxs[:, :, None]
                 + acat_t_to_k_gather_idxs[:, None, :],

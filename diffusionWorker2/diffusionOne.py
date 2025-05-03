@@ -238,7 +238,6 @@ class diffusion():
             # mask: torch.Tensor,
             noise_level: torch.Tensor,
             # batch,
-            USE_ONNX=False,
     ):
         # pred_dense_atom_mask = batch.predicted_structure_info.atom_mask
 
@@ -297,9 +296,9 @@ class diffusion():
     def _sample_diffusion(
             self,
             batch: feat_batch.Batch,
-            single, pair, target_feat,
+            single, pair, target_feat,seq_mask
             # embeddings: dict[str, torch.Tensor],
-            USE_ONNX=False,
+
     ):
         """Sample using denoiser on batch."""
 
@@ -319,7 +318,7 @@ class diffusion():
         pair_c = pair
         target_feat_c = target_feat
 
-        seq_mask = batch.token_features.mask
+        # seq_mask = batch.token_features.mask
         # seq_mask_attn=get_attn_mask(seq_mask,dtype=positions.dtype,device=device,
         #                             seq_len=pred_dense_atom_mask.shape[0],batch_size=1,num_heads=16)
 
@@ -353,8 +352,9 @@ class diffusion():
                 acat_q_to_atom_gather_idxs=batch.atom_cross_att.queries_to_token_atoms.gather_idxs,
                 acat_q_to_atom_gather_mask=batch.atom_cross_att.queries_to_token_atoms.gather_mask,
                 positions=positions, noise_level_prev=noise_levels[step_idx], noise_level=noise_levels[1 + step_idx],
-                USE_ONNX=USE_ONNX,
+
             )
+        # print("transformer sum_time:",self.diffusion_head.sum_time)
             # if (step_idx % 200) == 0:
             # print("noise_level: ", noise_level)
         print("conversion cost time :",self.conversion_time)
@@ -363,12 +363,12 @@ class diffusion():
 
 
 
-    def forward(self, batch: dict[str, torch.Tensor], single, pair, target_feat,USE_ONNX=False):
+    def forward(self, batch: dict[str, torch.Tensor], single, pair, target_feat,seq_mask=None):
         self.conversion_time=0
         batch = feat_batch.Batch.from_data_dict(batch)
 
         return self._sample_diffusion(batch,
-            single, pair, target_feat,USE_ONNX
+            single, pair, target_feat,seq_mask
         )
 
 

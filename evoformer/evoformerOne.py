@@ -286,11 +286,6 @@ class Evoformer(nn.Module):
         single_activations += self.prev_single_embedding(
             self.prev_single_embedding_layer_norm(single))
 
-        # attn_mask_seq = get_attn_mask(mask=seq_mask, dtype=single_activations.dtype, device=pair_activations.device,num_heads=16,seq_len=num_tokens,batch_size=1)
-
-        # pair_mask=pair_mask.to(dtype=pair_activations.dtype)
-        # attn_mask_4=attn_mask_4.to(dtype=pair_activations.dtype)
-        # attn_mask_seq=attn_mask_seq.to(dtype=pair_activations.dtype)
 
 
         #
@@ -341,8 +336,8 @@ class EvoFormerOne(nn.Module):
         super(EvoFormerOne, self).__init__()
 
         self.num_recycles = num_recycles
-        # self.num_recycles = 1
-
+        # self.num_recycles = 2
+        # self.num_recycles = 0
         self.num_samples = num_samples
 
         self.evoformer_pair_channel = 128
@@ -563,7 +558,7 @@ class EvoFormerOne(nn.Module):
         template_atom_positions=batch.templates.atom_positions.to(dtype=torch.bfloat16)
 
         # time1=time.time()
-        for _ in range(self.num_recycles + 0):
+        for _ in range(self.num_recycles + 1):
         # for _ in range(0+1):
             time1=time.time()
             single,pair = self.evoformer(

@@ -29,7 +29,7 @@ class ConfidenceOne():
             pair_mask,
             attn_pair_mask,
                 ) :
-        batch = feat_batch.Batch.from_data_dict(batch)
+        # batch = feat_batch.Batch.from_data_dict(batch)
 
 
         # time2=time.time()

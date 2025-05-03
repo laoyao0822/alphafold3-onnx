@@ -54,8 +54,8 @@ class TriangleMultiplication(nn.Module):
         # time1 = time.time()
         projection = self.projection(pair)
         projection = projection.permute(2, 0, 1)
-        if mask is not None:
-            projection *= mask[None, ...]
+        # if mask is not None:
+        #     projection *= mask[None, ...]
 
         gate = self.gate(pair)
         gate = gate.permute(2, 0, 1)
