@@ -308,9 +308,7 @@ class EvoFormerOne(nn.Module):
 
         # from onnxscript.rewriter import rewrite
 
-
         ten_length = torch.export.Dim('ten_length', min=100, max=16000)
-
         # ten_length = 10 * seq_len
 
         edge_number = torch.export.Dim('edge_number', min=10, max=1500)

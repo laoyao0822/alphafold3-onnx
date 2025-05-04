@@ -9,6 +9,8 @@
 # https://github.com/google-deepmind/alphafold3/blob/main/WEIGHTS_TERMS_OF_USE.md
 import sys
 from typing import Tuple
+
+from numpy.lib.tests.test_format import dtype
 from openvino import properties
 import openvino as ov
 import torch
@@ -84,7 +86,6 @@ class diffusion():
 
         seq_len = torch.export.Dim('seq_len', min=10, max=1600)
         edge_number = torch.export.Dim('edge_number', min=10, max=1500)
-
         ordered_keys = [
             'single', 'pair', 'target_feat',
             'token_index', 'residue_index', 'asym_id', 'entity_id', 'sym_id',
@@ -97,7 +98,6 @@ class diffusion():
             'acat_t_to_k_gather_idxs', 'acat_t_to_k_gather_mask',
             'positions','noise_level_prev','noise_level'
         ]
-
         output_names = ["positions_denoised"]
 
         kwarg_inputs = {
@@ -212,7 +212,8 @@ class diffusion():
 
     def _apply_denoising_step(
             self,
-            single, pair, target_feat,
+            single, pair,
+            target_feat,
             # token_index, residue_index, asym_id, entity_id, sym_id,
             real_feat,
             seq_mask,
@@ -260,7 +261,8 @@ class diffusion():
         # positions_denoised=None
         # print("that ",t_hat.dtype,"noise_level",noise_level.dtype)
         positions_out = self.diffusion_head(
-            single=single, pair=pair, target_feat=target_feat,
+            single=single, pair=pair,
+            target_feat=target_feat,
             # token_index=token_index, residue_index=residue_index,
             # asym_id=asym_id, entity_id=entity_id, sym_id=sym_id,
             real_feat=real_feat,
@@ -315,11 +317,17 @@ class diffusion():
             pred_dense_atom_mask.shape + (3,), device=device,dtype=torch.bfloat16).contiguous()
         positions *= noise_level
 
+        target_feat=target_feat.to(dtype=positions.dtype)
+
+
         real_feat=real_feat.to(positions.dtype).contiguous()
         # noise_level = torch.tile(noise_levels[None, 0], (num_samples,))
         single_c = single
         pair_c = pair
         target_feat_c = target_feat
+
+        # single_cond,pair_cond=self.diffusion_head._get_conditioning_pair_singe(rel_features=real_feat,target_feat=target_feat
+        #                                                             ,pair=pair_c,single=single_c)
 
         # seq_mask = batch.token_features.mask
         # seq_mask_attn=get_attn_mask(seq_mask,dtype=positions.dtype,device=device,
@@ -330,7 +338,8 @@ class diffusion():
         for step_idx in range(self.diffusion_steps):
             positions = self._apply_denoising_step(
                 # single=embeddings['single'], pair=embeddings['pair'], target_feat=embeddings['target_feat'],
-                single=single_c, pair=pair_c, target_feat=target_feat_c,
+                single=single, pair=pair,
+                target_feat=target_feat_c,
                 real_feat=real_feat,
                 seq_mask=seq_mask,
                 pred_dense_atom_mask=pred_dense_atom_mask,

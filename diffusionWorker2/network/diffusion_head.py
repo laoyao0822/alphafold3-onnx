@@ -151,6 +151,26 @@ class DiffusionHead(nn.Module):
         self.step_scale = 1.5
         self.sum_time=0
 
+        self.single_cond=None
+        self.pair_cond=None
+
+
+    # def _get_conditioning_pair_singe(self,rel_features,target_feat,pair,single):
+    #     features_2d = torch.concatenate([pair, rel_features], dim=-1)
+    #
+    #     pair_cond = self.pair_cond_initial_projection(
+    #         self.pair_cond_initial_norm(features_2d)
+    #     )
+    #
+    #     pair_cond += self.pair_transition_0(pair_cond)
+    #     pair_cond += self.pair_transition_1(pair_cond)
+    #     features_1d = torch.concatenate(
+    #         [single, target_feat], dim=-1)
+    #
+    #     single_cond = self.single_cond_initial_projection(
+    #         self.single_cond_initial_norm(features_1d))
+    #     return single_cond,pair_cond
+
     def _conditioning(
         self,
         # token_index, residue_index, asym_id, entity_id, sym_id,
@@ -160,57 +180,60 @@ class DiffusionHead(nn.Module):
         noise_level: torch.Tensor,
         # use_conditioning: bool,//always true
     ) -> tuple[torch.Tensor, torch.Tensor]:
-        # single_embedding =  embeddings['single']
-        # pair_embedding =  embeddings['pair']
-
-        # rel_features = featurization.create_relative_encoding(
-        #         #     batch.token_features, max_relative_idx=32, max_relative_chain=2
-        #         # ).to(dtype=pair.dtype)
-        # rel_features = featurization.create_relative_encoding(
-        #     token_index=token_index,
-        #     residue_index=residue_index,
-        #     asym_id=asym_id,
-        #     entity_id=entity_id,
-        #     sym_id=sym_id
-        # , max_relative_idx=32, max_relative_chain=2
-        # ).to(dtype=pair.dtype)
 
 
-        features_2d = torch.concatenate([pair, rel_features], dim=-1)
+        if self.single_cond==None:
+            features_2d = torch.concatenate([pair, rel_features], dim=-1)
 
-        pair_cond = self.pair_cond_initial_projection(
-            self.pair_cond_initial_norm(features_2d)
-        )
+            pair_cond = self.pair_cond_initial_projection(
+                self.pair_cond_initial_norm(features_2d)
+            )
+            pair_cond += self.pair_transition_0(pair_cond)
+            pair_cond += self.pair_transition_1(pair_cond)
 
-        pair_cond += self.pair_transition_0(pair_cond)
-        pair_cond += self.pair_transition_1(pair_cond)
+            # target_feat = embeddings['target_feat']
+            features_1d = torch.concatenate(
+                [single, target_feat], dim=-1)
 
-        # target_feat = embeddings['target_feat']
-        features_1d = torch.concatenate(
-            [single, target_feat], dim=-1)
+            single_cond = self.single_cond_initial_projection(
+                self.single_cond_initial_norm(features_1d))
+            self.single_cond=single_cond.clone()
+            self.pair_cond=pair_cond.clone()
+        else:
+        # print(single_cond.shape,pair_cond.shape)
+            single_cond=self.single_cond.clone()
+            pair_cond=self.pair_cond.clone()
 
-
-        single_cond = self.single_cond_initial_projection(
-            self.single_cond_initial_norm(features_1d))
 
         noise_embedding = self.fourier_embeddings(
             (1 / 4) * torch.log(noise_level / SIGMA_DATA)
         )
-
         single_cond += self.noise_embedding_initial_projection(
             self.noise_embedding_initial_norm(noise_embedding)
         )
-
         single_cond += self.single_transition_0(single_cond)
         single_cond += self.single_transition_1(single_cond)
 
         return single_cond, pair_cond
 
+    # def _conditioning(self,noise_level,single):
+    #     noise_embedding = self.fourier_embeddings(
+    #         (1 / 4) * torch.log(noise_level / SIGMA_DATA)
+    #     )
+    #
+    #     single_cond = single+self.noise_embedding_initial_projection(
+    #         self.noise_embedding_initial_norm(noise_embedding)
+    #     )
+    #
+    #     single_cond += self.single_transition_0(single_cond)
+    #     single_cond += self.single_transition_1(single_cond)
+    #
+    #     return single_cond
+
     def forward(
         self,
-        single,pair,target_feat,
+        single,pair,target_feat,real_feat,
         # token_index, residue_index, asym_id, entity_id, sym_id,
-        real_feat,
         seq_mask, pred_dense_atom_mask,
         ref_ops, ref_mask, ref_element, ref_charge, ref_atom_name_chars, ref_space_uid,
 
@@ -251,13 +274,14 @@ class DiffusionHead(nn.Module):
         noise_level_back=noise_level
         noise_level=t_hat
         # Get conditioning
-        trunk_single_cond, trunk_pair_cond = self._conditioning(
+        trunk_single_cond,trunk_pair_cond = self._conditioning(
 
             rel_features=real_feat,
             single=single, pair=pair, target_feat=target_feat,
             noise_level=noise_level,
             # use_conditioning=use_conditioning,
         )
+        # trunk_pair_cond=pair.clone()
 
         act = positions_noisy * pred_dense_atom_mask[..., None] / torch.sqrt(noise_level**2 + SIGMA_DATA**2)
 

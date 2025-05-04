@@ -105,7 +105,7 @@ class TemplateEmbedding(nn.Module):
 
         padding_mask_2d: torch.Tensor,
         attn_mask:torch.Tensor,
-        multichain_mask_2d: torch.Tensor
+        multichain_mask_2d: torch.Tensor,
     ) -> torch.Tensor:
         # num_templates = templates.aatype.shape[0]
 
@@ -122,7 +122,7 @@ class TemplateEmbedding(nn.Module):
             template_embedding = self.single_template_embedding(
                 query_embedding,
                 template_aatype[template_idx], template_atom_positions[template_idx], template_atom_mask[template_idx],
-                padding_mask_2d=padding_mask_2d,attn_mask=attn_mask, multichain_mask_2d=multichain_mask_2d
+                padding_mask_2d=padding_mask_2d,attn_mask=attn_mask, multichain_mask_2d=multichain_mask_2d,template_idx=template_idx
             )
             summed_template_embeddings += template_embedding
 
@@ -221,7 +221,6 @@ class SingleTemplateEmbedding(nn.Module):
             dim=-1,
             keepdim=True
         )
-
         dgram = (dist2 > lower_breaks).to(dtype=torch.float32) * (
                 dist2 < upper_breaks
         ).to(dtype=torch.float32)
@@ -252,19 +251,12 @@ class SingleTemplateEmbedding(nn.Module):
 
         if is_ligand is None:
             is_ligand = torch.zeros_like(aatype)
-        # torch.take_along_dim(input, indices, dim=None, *, out=None) → Tensor
-        # print('self.RESTYPE_PSEUDOBETA_INDEX',self.RESTYPE_PSEUDOBETA_INDEX.shape)
-        # print('aatype',aatype.shape)
-        #self.RESTYPE_PSEUDOBETA_INDEX torch.Size([31])
-        # aatype torch.Size([37])
+
         pseudobeta_index_polymer = torch.take_along_dim(
             self.RESTYPE_PSEUDOBETA_INDEX, aatype.to(dtype=torch.int64),
             dim=0
         ).to(dtype=torch.int32)
-        # convert take_along_dim to gather because torch script only support up to opset20
-        # pseudobeta_index_polymer = self.RESTYPE_PSEUDOBETA_INDEX.to(
-        #     device=aatype.device
-        # )[aatype.to(dtype=torch.int64)].to(dtype=torch.int32)  # 结果保持 [37]
+
 
         pseudobeta_index = torch.where(
             is_ligand.to(dtype=torch.bool),
@@ -272,29 +264,16 @@ class SingleTemplateEmbedding(nn.Module):
             pseudobeta_index_polymer,
         ).to(dtype=torch.int64)
 
-        # print('dense_atom_positions',dense_atom_positions.shape)
-        # print('pseudobeta_index[..., None, None]',pseudobeta_index[..., None, None].shape)
-        #dense_atom_positions torch.Size([37, 24, 3])
-        # pseudobeta_index[..., None, None] torch.Size([37, 1, 1])
         pseudo_beta = torch.take_along_dim(
             dense_atom_positions, pseudobeta_index[..., None, None], dim=-2
         )
         pseudo_beta = torch.squeeze(pseudo_beta, dim=-2)
-        # row_idx = torch.arange(37, device=dense_atom_positions.device)
-        # pseudo_beta = dense_atom_positions[row_idx, pseudobeta_index, :]  # 直接索引 → [37, 3]
 
-
-        # print('dense_atom_masks',dense_atom_masks.shape)
-        # print('pseudobeta_index[..., None]',pseudobeta_index[..., None].shape)
-        #dense_atom_masks torch.Size([37, 24])
-        # pseudobeta_index[..., None] torch.Size([37, 1])
         pseudo_beta_mask = torch.take_along_dim(
             dense_atom_masks, pseudobeta_index[..., None], dim=-1
         ).to(dtype=torch.float32)
         pseudo_beta_mask = torch.squeeze(pseudo_beta_mask, dim=-1)
         # pseudo_beta_mask = dense_atom_masks[row_idx, pseudobeta_index].to(dtype=torch.float32)  # 直接索引 → [37]
-
-
         return pseudo_beta, pseudo_beta_mask
 
     def construct_input(
@@ -302,7 +281,8 @@ class SingleTemplateEmbedding(nn.Module):
             # templates: features.Templates,
             templates_aatype, dense_atom_positions, dense_atom_mask,
 
-            multichain_mask_2d
+            multichain_mask_2d, template_idx,
+
     ) -> torch.Tensor:
         # Compute distogram feature for the template.
         time1=time.time()
@@ -373,18 +353,13 @@ class SingleTemplateEmbedding(nn.Module):
             xx, xy, xz, yx, yy, yz, zx, zy, zz,
             x, y, z
         )
-        # rot_xx, rot_xy, rot_xz,rot_yx, rot_yy, rot_yz,rot_zx, rot_zy, rot_zz=inv_rot
         x_vec, y_vec, z_vec = geometry_method.rigid3_apply_to_point(rot_xx, rot_xy, rot_xz,
                                                                     rot_yx, rot_yy, rot_yz,
                                                                     rot_zx, rot_zy, rot_zz,
                                                                     t_x, t_y, t_z, x_p, y_p, z_p)
-        # unit_vector = rigid_vec.normalized()
         x_vec, y_vec, z_vec = geometry_method.vec3_normalized(x_vec, y_vec, z_vec)
         unit_vector = [x_vec, y_vec, z_vec]
 
-        # rigid_vec = rigid.inverse().apply_to_point(points)
-        # unit_vector = rigid_vec.normalized()
-        # unit_vector = [unit_vector.x, unit_vector.y, unit_vector.z]
 
         unit_vector = [x.to(dtype=dtype) for x in unit_vector]
         backbone_mask = backbone_mask.to(dtype=dtype)
@@ -393,21 +368,10 @@ class SingleTemplateEmbedding(nn.Module):
         backbone_mask_2d *= multichain_mask_2d
         unit_vector = [x * backbone_mask_2d for x in unit_vector]
 
-        # Note that the backbone_mask takes into account C, CA and N (unlike
-        # pseudo beta mask which just needs CB) so we add both masks as features.
         to_concat.extend([(x, 0) for x in unit_vector])
         to_concat.append((backbone_mask_2d, 0))
 
-        # print('construct time',time.time()-time1)
 
-        # for in_concat,n_input_dims in to_concat:
-        #     print("in_concat",in_concat.shape,n_input_dims)
-        # print("construct_input:",time.time()-time1)
-
-
-        # for in_concat,n_input_dims in to_concat:
-        #     print("in_concat",in_concat.shape,n_input_dims)
-        # print("construct_input:",time.time()-time1)        # act = 0
 
         query_embedding = self.query_embedding_norm(query_embedding)
         # for x, n_input_dims in to_concat:
@@ -461,7 +425,6 @@ class SingleTemplateEmbedding(nn.Module):
         if n_input_dims == 0:
             x = x[..., None]
         act += self.template_pair_embedding_7(x)
-
         # 处理第8个元素
         x, n_input_dims = to_concat[8]
         if n_input_dims == 0:
@@ -479,7 +442,10 @@ class SingleTemplateEmbedding(nn.Module):
 
         padding_mask_2d: torch.Tensor,
         attn_mask: torch.Tensor,
-        multichain_mask_2d: torch.Tensor
+        multichain_mask_2d: torch.Tensor,
+
+        template_idx,
+
     ) -> torch.Tensor:
 
         # act = self.construct_input(
@@ -488,7 +454,8 @@ class SingleTemplateEmbedding(nn.Module):
         act = self.construct_input(
             query_embedding,
             template_aatype, template_atom_positions, template_atom_mask,
-            multichain_mask_2d)
+            multichain_mask_2d,template_idx,
+        )
         # padding_mask_2d_c=padding_mask_2d.clone()
         for pairformer_block in self.template_embedding_iteration:
             act = pairformer_block(act, pair_mask=padding_mask_2d,pair_mask_attn=attn_mask)
