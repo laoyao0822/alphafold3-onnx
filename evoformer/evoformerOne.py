@@ -110,6 +110,8 @@ class Evoformer(nn.Module):
         # max_relative_idx = 32
         # max_relative_chain = 2
 
+        time1=time.time()
+
         rel_feat = featurization.create_relative_encodingV2(
             token_index=token_index,
             residue_index=residue_index,
@@ -121,6 +123,8 @@ class Evoformer(nn.Module):
             max_relative_idx=32,
             max_relative_chain=2
         ).to(dtype=pair_activations.dtype)
+
+        print('create_relative_encodingV2:',time.time()-time1,rel_feat.dtype,rel_feat.shape)
 
         pair_activations += self.position_activations(rel_feat)
         return pair_activations
@@ -197,12 +201,6 @@ class Evoformer(nn.Module):
     ) -> torch.Tensor:
         """Processes MSA and returns updated pair activations."""
         dtype = pair_activations.dtype
-        # rows=msa_batch.rows
-        # mask=msa_batch.mask
-        # deletion_matrix=msa_batch.deletion_matrix
-
-        # msa_batch = featurization.shuffle_msa(msa_batch)
-        # msa_batch = featurization.truncate_msa_batch(msa_batch, self.num_msa)
         rows, mask, deletion_matrix= featurization.shuffle_msa_runcate(rows, mask, deletion_matrix,num_msa=self.num_msa)
 
         msa_mask = mask.to(dtype=dtype)
@@ -231,19 +229,23 @@ class Evoformer(nn.Module):
         target_feat,
         msa, msa_mask, deletion_matrix,
 
-        token_index, residue_index, asym_id, entity_id, sym_id,
 
-        seq_mask,
+        token_index, residue_index, asym_id, entity_id, sym_id,
+        # seq_mask,
         contact_matrix,
         template_aatype, template_atom_positions, template_atom_mask,
 
         # pair_activations,pair_mask,
-        attn_mask_4,
-        pair_mask,
-        attn_mask_seq
+        # turn on when seq_mask is not all 1
+        # attn_mask_4,
+        # pair_mask,
+        # attn_mask_seq
     ) :
         # target_feat_c=target_feat.clone()
-
+        # turn on when seq_mask is not all
+        attn_mask_4=None
+        pair_mask=None
+        attn_mask_seq=None
         # pair=prev['pair']
         # single=prev['single']
         num_tokens = token_index.shape[0]
@@ -259,8 +261,6 @@ class Evoformer(nn.Module):
 
         pair_activations += self.prev_embedding(
             self.prev_embedding_layer_norm(pair))
-
-
 
 
         # pair_activations = self._relative_encoding(batch, pair_activations)
@@ -288,7 +288,6 @@ class Evoformer(nn.Module):
 
 
 
-        #
         pair_activations = self._embed_template_pair(
             asym_id=asym_id, template_aatype=template_aatype,
             template_atom_positions=template_atom_positions, template_atom_mask=template_atom_mask,
@@ -315,19 +314,7 @@ class Evoformer(nn.Module):
         for pairformer_b in self.trunk_pairformer:
             pair_activations, single_activations = pairformer_b(
                 pair_activations, pair_mask, single_activations, attn_mask_seq,attn_mask_4)
-        # assert torch.allclose(pair_mask_c, pair_mask, atol=1e-2, rtol=1e-2), "输出不一致！"
 
-        # if torch.allclose(target_feat,target_feat_c,1e-5):
-        #     print("target feat  not change")
-        # print("_pairformer_b over")
-        # exit(0)
-
-        # output = {
-        #     'single': single_activations,
-        #     'pair': pair_activations,
-        #     'target_feat': target_feat,
-        # }
-        # return output
         return single_activations,pair_activations
 
 class EvoFormerOne(nn.Module):
@@ -399,17 +386,19 @@ class EvoFormerOne(nn.Module):
             'entity_id': batch.token_features.entity_id,
             'sym_id': batch.token_features.sym_id,
 
-            'seq_mask': batch.token_features.mask,
+            # 'seq_mask': batch.token_features.mask,
             'contact_matrix': contact_matrix,
+
             # 't_o_pol_idx': batch.polymer_ligand_bond_info.tokens_to_polymer_ligand_bonds.gather_idxs,
             # 't_o_pol_mask': batch.polymer_ligand_bond_info.tokens_to_polymer_ligand_bonds.gather_mask,
             # 't_o_lig_idxs': batch.ligand_ligand_bond_info.tokens_to_ligand_ligand_bonds.gather_idxs,
             # 't_o_lig_masks': batch.ligand_ligand_bond_info.tokens_to_ligand_ligand_bonds.gather_mask,
+
             'template_aatype': batch.templates.aatype,
             'template_atom_positions': batch.templates.atom_positions,
             'template_atom_mask': batch.templates.atom_mask,
 
-            'attn_mask_seq':attn_mask_seq,
+            # 'attn_mask_seq':attn_mask_seq,
         }
         ordered_inputs = tuple(kwarg_inputs[key] for key in ordered_keys)
 
@@ -458,13 +447,13 @@ class EvoFormerOne(nn.Module):
                           'entity_id': {0: seq_len},
                           'sym_id': {0: seq_len},
 
-                          'seq_mask': {0: seq_len},
+                          # 'seq_mask': {0: seq_len},
                           'contact_matrix':{0: seq_len,1: seq_len},
                           # 模板相关
                           'template_aatype': {1: seq_len},
                           'template_atom_positions': {1: seq_len},
                           'template_atom_mask': {1: seq_len},
-                          'attn_mask_seq':{2:seq_len,3:seq_len}
+                          # 'attn_mask_seq':{2:seq_len,3:seq_len}
                       },
                           )
         exit(0)
@@ -576,7 +565,7 @@ class EvoFormerOne(nn.Module):
                 entity_id = batch.token_features.entity_id,
                 sym_id = batch.token_features.sym_id,
 
-                seq_mask=seq_mask,
+                # seq_mask=seq_mask,
                 contact_matrix=contact_matrix,
                 # t_o_pol_idx=batch.polymer_ligand_bond_info.tokens_to_polymer_ligand_bonds.gather_idxs,
                 # t_o_pol_mask = batch.polymer_ligand_bond_info.tokens_to_polymer_ligand_bonds.gather_mask,
@@ -587,9 +576,9 @@ class EvoFormerOne(nn.Module):
                 template_atom_mask = batch.templates.atom_mask,
 
                 # pair_activations = pair_activations,
-                pair_mask=pair_mask,
-                attn_mask_4=attn_mask_4,
-                attn_mask_seq=attn_mask_seq,
+                # pair_mask=pair_mask,
+                # attn_mask_4=attn_mask_4,
+                # attn_mask_seq=attn_mask_seq,
                 # prev=embeddings,
             )
             print("evo one cost time:", time.time()-time1)

@@ -339,19 +339,6 @@ class SingleTemplateEmbedding(nn.Module):
         to_concat.append((aatype[None, :, :], 1))
         to_concat.append((aatype[:, None, :], 1))
 
-        # Compute a feature representing the normalized vector between each
-        # backbone affine - i.e. in each residues local frame, what direction are
-        # each of the other residues.
-        # print("protein_data_processing:",protein_data_processing.RESTYPE_RIGIDGROUP_DENSE_ATOM_IDX.to(device=templates_aatype.device).shape)
-        # print('self.RESTYPE_RIGIDGROUP_DENSE_ATOM_IDX',self.RESTYPE_RIGIDGROUP_DENSE_ATOM_IDX.shape)
-        # print('templates_aatype[..., None, None]',templates_aatype[..., None, None].shape)
-        #self.RESTYPE_RIGIDGROUP_DENSE_ATOM_IDX torch.Size([31, 8, 3])
-        #templates_aatype[..., None, None] torch.Size([37, 1, 1])
-        # template_group_indices = torch.take_along_dim(
-        #     self.RESTYPE_RIGIDGROUP_DENSE_ATOM_IDX.to(device=templates_aatype.device),
-        #     templates_aatype.to(dtype=torch.int64)[..., None, None],
-        #     dim=0
-        # )
 
 
         # convert take_along_dim to gather because torch script only support up to opset20
@@ -361,32 +348,12 @@ class SingleTemplateEmbedding(nn.Module):
         )[templates_aatype.to(dtype=torch.int64)]  # 结果自动广播到 [37, 8, 3]
 
 
-
-        # rigid, backbone_mask = make_backbone_rigid(
-        #     geometry.Vec3Array.from_array(dense_atom_positions),
-        #     dense_atom_mask,
-        #     template_group_indices.to(dtype=torch.int32),
-        # )
         (rotation, x, y, z), backbone_mask = make_backbone_rigid_tensor(
             dense_atom_positions,  # 直接传入三维张量 [num_res, num_atoms, 3]
             dense_atom_mask,
             template_group_indices.to(dtype=torch.int32)
         )
-        # points = rigid.translation
-        #
-        # rigid.rotation = geometry.Rot3Array(rigid.rotation.xx[:, None],
-        #                                     rigid.rotation.xy[:, None],
-        #                                     rigid.rotation.xz[:, None],
-        #                                     rigid.rotation.yx[:, None],
-        #                                     rigid.rotation.yy[:, None],
-        #                                     rigid.rotation.yz[:, None],
-        #                                     rigid.rotation.zx[:, None],
-        #                                     rigid.rotation.zy[:, None],
-        #                                     rigid.rotation.zz[:, None])
-        #
-        # rigid.translation = geometry.Vec3Array(rigid.translation.x[:, None],
-        #                                        rigid.translation.y[:, None],
-        #                                        rigid.translation.z[:, None])
+
         xx, xy, xz, yx, yy, yz, zx, zy, zz = rotation
         x_p, y_p, z_p = x, y, z
         xx = xx[:, None]
@@ -430,14 +397,23 @@ class SingleTemplateEmbedding(nn.Module):
         # pseudo beta mask which just needs CB) so we add both masks as features.
         to_concat.extend([(x, 0) for x in unit_vector])
         to_concat.append((backbone_mask_2d, 0))
-        # for in_concat,_ in to_concat:
-        #     print("in_concat",in_concat.shape)
+
+        # print('construct time',time.time()-time1)
+
+        # for in_concat,n_input_dims in to_concat:
+        #     print("in_concat",in_concat.shape,n_input_dims)
         # print("construct_input:",time.time()-time1)
+
+
+        for in_concat,n_input_dims in to_concat:
+            print("in_concat",in_concat.shape,n_input_dims)
+        print("construct_input:",time.time()-time1)        # act = 0
+
         query_embedding = self.query_embedding_norm(query_embedding)
         # for x, n_input_dims in to_concat:
         #     print(x.shape)
         to_concat.append((query_embedding, 1))
-        # act = 0
+
         # 处理第0个元素
         x, n_input_dims = to_concat[0]
         if n_input_dims == 0:
@@ -494,20 +470,6 @@ class SingleTemplateEmbedding(nn.Module):
 
         return act
 
-        # for i, (x, n_input_dims) in enumerate(to_concat):
-        #     if n_input_dims == 0:
-        #         x = x[..., None]
-        #     print("__getattr__",i)
-            # act += self.__getattr__(f'template_pair_embedding_{i}')(x)
-            # act += self.template_embedding_iteration[i](x)
-            # act += self.template_pair_embedding_1(x)
-            # act += self.template_pair_embedding_2(x)
-            # act += self.template_pair_embedding_3(x)
-            # act += self.template_pair_embedding_4(x)
-            # act += self.template_pair_embedding_5(x)
-            # act += self.template_pair_embedding_6(x)
-            # act += self.template_pair_embedding_7(x)
-            # act += self.template_pair_embedding_8(x)
 
     def forward(
         self,

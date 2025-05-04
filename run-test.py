@@ -112,7 +112,7 @@ _CPU_INFERENCE = flags.DEFINE_bool(
 # control the number of threads used by the data pipeline.
 _NUM_THREADS = flags.DEFINE_integer(
     'num_cpu_threads',
-    60,
+    119,
     'Number of threads to use for the data pipeline.',
 )
 

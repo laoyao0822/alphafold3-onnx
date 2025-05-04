@@ -248,13 +248,13 @@ class GridSelfAttention(nn.Module):
 
     def _attention_tp(self, pair: torch.Tensor, attn_mask: torch.Tensor):
 
-
-        pair = pair.to(dtype=torch.bfloat16).contiguous()
+        # print('send pair',pair.dtype)
+        pair = pair.contiguous()
         # attn_mask = attn_mask.to(dtype=torch.bfloat16).contiguous()
 
 
         # print("start to send",combined_tensor.shape,combined_tensor.dtype)
-        dist.isend(pair, dst=1)
+        se=dist.isend(pair, dst=1)
 
         self.chunk_weight()
 
@@ -285,10 +285,12 @@ class GridSelfAttention(nn.Module):
         gate_values1 = self.gating_query1(pair)
         # print("gate_values1 shape",gate_values1.shape,"gate_values2 shape",gate_values2.shape)
         weighted_avg1 *= torch.sigmoid(gate_values1)
-        out_proj1 = self.output_projection1(weighted_avg1)
-
+        out_proj1 = self.output_projection1(weighted_avg1).contiguous()
+        # se.wait()
+        # dist.reduce(out_proj1, dst=0, op=dist.ReduceOp.SUM)
+        se.wait()
         res.wait()
-        # pair = out_proj1 + output_proj2
+        # return out_proj1
         return out_proj1 + output_proj2
 
     def forward(self, pair, mask=None,attn_mask=None):
@@ -305,7 +307,7 @@ class GridSelfAttention(nn.Module):
         if self.transpose:
             pair = pair.permute(1, 0, 2)
 
-        if self.world_size > 1 and config._GridAttention_TP and self.world_size > 1 and seq_len>config._GridAttention_TP_Min_TOKEN:
+        if self.world_size > 1 and config._GridAttention_TP and seq_len>config._GridAttention_TP_Min_TOKEN:
             pair = self._attention_tp(pair, attn_mask=attn_mask).contiguous()
         else:
             pair = self._attention(pair, attn_mask=attn_mask)

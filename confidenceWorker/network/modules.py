@@ -82,6 +82,7 @@ class TriangleMultiplication(nn.Module):
 
         pair = pair.permute(1, 2, 0)
         pair = self.center_norm(pair)
+
         pair = self.output_projection(pair)
 
         gate_out = self.gating_linear(input_pair)

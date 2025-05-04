@@ -1,4 +1,4 @@
-import torchWorker.alphafold3
+# import torchWorker.alphafold3
 import datetime
 import random
 from collections.abc import Sequence
@@ -19,10 +19,11 @@ import os
 import pathlib
 import torchWorker.misc.params as params
 import torch.distributed as dist
-from torchWorker.alphafold3 import AlphaFold3
-from torchWorker.misc.params import import_jax_weights_
-
+from evoWorker.evoformerWorker import EvoFormerOne
+from evoWorker.misc.params import import_jax_weights_
+from evoWorker.network.dot_product_attention import get_attn_mask
 import torch
+from torchfold3.misc import feat_batch
 
 from alphafold3.common import folding_input
 from alphafold3.constants import chemical_components
@@ -55,25 +56,25 @@ _MODEL_DIR = flags.DEFINE_string(
 )
 _RANK_ = flags.DEFINE_integer(
     'rank',
-    0,
+    1,
     'Number of the pipeline Chunk.',
 )
 _WOLRD_SIZE = flags.DEFINE_integer(
     'world_size',
-    1,
+    2,
     'Number of THE world Size.',
 )
 
 _CPU_INFERENCE = flags.DEFINE_bool(
     'cpu_inference',
-    False,
+    True,
     'Whether to run inference on the cpu.',
 )
 
 # control the number of threads used by the data pipeline.
 _NUM_THREADS = flags.DEFINE_integer(
     'num_cpu_threads',
-    20,
+    59,
     'Number of threads to use for the data pipeline.',
 )
 
@@ -144,8 +145,8 @@ class ModelRunner:
         rank = _RANK_.value
         if _WOLRD_SIZE.value > 1:
             setup(_RANK_.value, _WOLRD_SIZE.value)
-        self._model = torchWorker.alphafold3.AlphaFold3(num_samples=_NUM_DIFFUSION_SAMPLES.value)
-        self._model.eval()
+        self._model = EvoFormerOne()
+        self._model.evoformer.eval()
 
         self.target_feat = TargetFeat()
         self.target_feat.eval()
@@ -163,8 +164,9 @@ class ModelRunner:
             if _CPU_IPEX_OPT:
                 import intel_extension_for_pytorch as ipex
                 print("Applying Intel Extension for PyTorch optimizations...")
-                self._model = ipex.optimize(self._model, weights_prepack=False, optimize_lstm=True,
+                self._model.evoformer = ipex.optimize(self._model.evoformer, weights_prepack=False, optimize_lstm=True,
                                             auto_kernel_selection=True, dtype=torch.bfloat16)
+                self.target_feat = ipex.optimize(self.target_feat,weights_prepack=False,optimize_lstm=True,auto_kernel_selection=True,dtype=torch.bfloat16)
 
             if _CPU_FLUSH_DENORM_OPT:
                 torch.set_flush_denormal(True)
@@ -209,7 +211,44 @@ class ModelRunner:
             if _CPU_AMP_OPT:
                 with torch.amp.autocast(device_type="cpu", dtype=torch.bfloat16):
                     print("Running inference with AMP on CPU...")
-                    self._model(featurised_example)
+                    batch = feat_batch.Batch.from_data_dict(featurised_example)
+                    seq_mask = batch.token_features.mask.contiguous()
+                    pair_mask = seq_mask[:, None] * seq_mask[None, :]
+
+                    num_tokens = seq_mask.shape[0]
+                    attn_mask_4 = get_attn_mask(mask=pair_mask, dtype=torch.bfloat16,
+                                                device='cpu',
+                                                batch_size=num_tokens,
+                                                num_heads=4, seq_len=num_tokens).contiguous()
+
+                    target_feat = self.target_feat(
+                        aatype=batch.token_features.aatype,
+                        profile=batch.msa.profile,
+                        deletion_mean=batch.msa.deletion_mean,
+
+                        pred_dense_atom_mask=batch.predicted_structure_info.atom_mask,
+
+                        acat_atoms_to_q_gather_idxs=batch.atom_cross_att.token_atoms_to_queries.gather_idxs,
+                        acat_atoms_to_q_gather_mask=batch.atom_cross_att.token_atoms_to_queries.gather_mask,
+
+                        acat_q_to_k_gather_idxs=batch.atom_cross_att.queries_to_keys.gather_idxs,
+                        acat_q_to_k_gather_mask=batch.atom_cross_att.queries_to_keys.gather_mask,
+                        acat_t_to_q_gather_idxs=batch.atom_cross_att.tokens_to_queries.gather_idxs,
+                        acat_t_to_q_gather_mask=batch.atom_cross_att.tokens_to_queries.gather_mask,
+                        acat_q_to_atom_gather_idxs=batch.atom_cross_att.queries_to_token_atoms.gather_idxs,
+                        acat_q_to_atom_gather_mask=batch.atom_cross_att.queries_to_token_atoms.gather_mask,
+
+                        acat_t_to_k_gather_idxs=batch.atom_cross_att.tokens_to_keys.gather_idxs,
+                        acat_t_to_k_gather_mask=batch.atom_cross_att.tokens_to_keys.gather_mask,
+                        ref_ops=batch.ref_structure.positions,
+                        ref_mask=batch.ref_structure.mask,
+                        ref_element=batch.ref_structure.element,
+                        ref_charge=batch.ref_structure.charge,
+                        ref_atom_name_chars=batch.ref_structure.atom_name_chars,
+                        ref_space_uid=batch.ref_structure.ref_space_uid
+                    ).contiguous()
+                    self._model(num_tokens,attn_mask_4)
+
             else:
                 print("Running inference without AMP on CPU...")
                 self._model(featurised_example)

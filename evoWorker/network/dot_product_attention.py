@@ -15,9 +15,8 @@ def dot_product_attention_torch(q: torch.Tensor,
                                 v: torch.Tensor,
                                 mask: Optional[torch.Tensor] = None,
                                 bias: Optional[torch.Tensor] = None):
-    scaling = q.size(-1) ** -0.5
-    q = q * scaling
-
+    # scaling = q.size(-1) ** -0.5
+    # q = q * scaling
     logits = torch.matmul(q, k.transpose(-1, -2))
 
     if bias is not None:
@@ -60,7 +59,10 @@ def dot_product_attention_sdpa_full(
         )
         # print("attn_mask", attn_mask.shape)
         # 添加 bias 到 attn_mask
-
+        if bias is not None:
+            if bias.dim() == 3:  # (heads, seq_len_q, seq_len_k)
+                bias = bias.unsqueeze(0)  # 扩展 batch 维度
+            attn_mask += bias
         mask=mask.to(dtype=torch.bool)
         # 添加 mask 到 attn_mask
         if mask is not None:
@@ -80,11 +82,6 @@ def dot_product_attention_sdpa_full(
             mask_float = mask_float[:, None, None, :]
             attn_mask += mask_float
 
-    print("attn mask ",attn_mask.shape)
-    if bias is not None:
-        if bias.dim() == 3:  # (heads, seq_len_q, seq_len_k)
-            bias = bias.unsqueeze(0)  # 扩展 batch 维度
-        attn_mask += bias
     # 调用 PyTorch SDPA
     return torch.nn.functional.scaled_dot_product_attention(
         q, k, v,
@@ -135,13 +132,13 @@ def dot_product_attention_sdpa(
         q: torch.Tensor,
         k: torch.Tensor,
         v: torch.Tensor,
-        attn_mask,
-        bias: Optional[torch.Tensor] = None
+        bias,
+        attn_mask: Optional[torch.Tensor] = None
 ) -> torch.Tensor:
-    bias=bias.unsqueeze(0).contiguous()
     # sdpa_mask=attn_mask+bias
     # print('q.shape',q.shape,'k.shape',k.shape,'v.shape',v.shape,'attn_mask.shape',attn_mask.shape)
     # print("sdpa execute")
+    bias=bias.unsqueeze(0).contiguous()
     return torch.nn.functional.scaled_dot_product_attention(
         q, k, v,
         attn_mask=bias,  # 合并后的掩码和偏置
@@ -163,11 +160,11 @@ def dot_product_attention(q: torch.Tensor,
         q = q.unsqueeze(0)
         k = k.unsqueeze(0)
         v = v.unsqueeze(0)
-    out = dot_product_attention_torch(q, k, v, mask, bias)
+    # out = dot_product_attention_torch(q, k, v, mask, bias)
     # out = dot_product_attention_flex(q, k, v, mask, bias)
     # if k.shape[-1] not in {16, 32, 64, 128}:
-    # print("attn mask",get_attn_mask_withqk(mask,q,k).shape)
-    # out = dot_product_attention_sdpa_full(q, k, v, mask, bias)
+    print("attn mask",get_attn_mask_withqk(mask,q,k).shape)
+    out = dot_product_attention_sdpa_full(q, k, v, mask, bias)
     # else:
     #     out = dot_product_attention_flex(q, k, v, mask, bias)
 
