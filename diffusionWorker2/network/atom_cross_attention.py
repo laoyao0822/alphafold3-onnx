@@ -240,25 +240,6 @@ class AtomCrossAttEncoder(nn.Module):
                         ref_charge=ref_charge,
                         ref_atom_name_chars=ref_atom_name_chars,
         )
-        # pred_dense_atom_mask = batch.predicted_structure_info.atom_mask
-        # token_atoms_mask = batch.predicted_structure_info.atom_mask
-        # acat_atoms_to_q_gather_idxs = batch.atom_cross_att.token_atoms_to_queries.gather_idxs
-        # acat_atoms_to_q_gather_mask=batch.atom_cross_att.token_atoms_to_queries.gather_mask
-        # acat_t_to_q_gather_idxs = batch.atom_cross_att.tokens_to_queries.gather_idxs
-        # acat_t_to_q_gather_mask = batch.atom_cross_att.tokens_to_queries.gather_mask
-        #
-        # acat_q_to_k_gather_idxs = batch.atom_cross_att.queries_to_keys.gather_idxs
-        # acat_q_to_k_gather_mask = batch.atom_cross_att.queries_to_keys.gather_mask
-        #
-        # acat_t_to_k_gather_idxs = batch.atom_cross_att.tokens_to_keys.gather_idxs
-        # acat_t_to_k_gather_mask = batch.atom_cross_att.tokens_to_keys.gather_mask
-        # acat_q_to_atom_gather_idxs = batch.atom_cross_att.queries_to_token_atoms.gather_idxs
-        # acat_q_to_atom_gather_mask = batch.atom_cross_att.queries_to_token_atoms.gather_mask
-        # queries_single_cond = atom_layout.convert(
-        #     batch.atom_cross_att.token_atoms_to_queries,
-        #     token_atoms_single_cond,
-        #     layout_axes=(-3, -2),
-        # )
 
         queries_single_cond = atom_layout.convertV2(
             acat_atoms_to_q_gather_idxs,
@@ -313,11 +294,7 @@ class AtomCrossAttEncoder(nn.Module):
         queries_act *= queries_mask[..., None]
         queries_act += queries_single_cond
 
-        # keys_single_cond = atom_layout.convert(
-        #     batch.atom_cross_att.queries_to_keys,
-        #     queries_single_cond,
-        #     layout_axes=(-3, -2),
-        # )
+
         keys_single_cond = atom_layout.convertV2(
             # batch.atom_cross_att.queries_to_keys,
             acat_q_to_k_gather_idxs,
@@ -325,12 +302,6 @@ class AtomCrossAttEncoder(nn.Module):
             queries_single_cond,
             layout_axes=(-3, -2),
         )
-        # keys_mask = atom_layout.convert(
-        #     batch.atom_cross_att.queries_to_keys,
-        #     queries_mask,
-        #     layout_axes=(
-        #         -2, -1)
-        # )
         keys_mask = atom_layout.convertV2(
             # batch.atom_cross_att.queries_to_keys,
             acat_q_to_k_gather_idxs,
@@ -339,15 +310,9 @@ class AtomCrossAttEncoder(nn.Module):
                 -2, -1)
         )
 
-        # Embed single features into the pair conditioning.
-        # shape (num_subsets, num_queries, num_keys, ch)
         row_act = self.single_to_pair_cond_row_1(
             torch.relu(queries_single_cond))
-        # pair_cond_keys_input = atom_layout.convert(
-        #     batch.atom_cross_att.queries_to_keys,
-        #     queries_single_cond,
-        #     layout_axes=(-3, -2),
-        # )
+
         pair_cond_keys_input = atom_layout.convertV2(
             acat_q_to_k_gather_idxs,
             acat_q_to_k_gather_mask,
@@ -365,23 +330,6 @@ class AtomCrossAttEncoder(nn.Module):
             # Create the GatherInfo into a flattened trunk_pair_cond from the
             # queries and keys gather infos.
         num_tokens = trunk_pair_cond.shape[0]
-            # (num_subsets, num_queries)
-            # (num_subsets, num_queries, num_keys)
-        # trunk_pair_to_atom_pair = atom_layout.GatherInfo(
-        #         gather_idxs=(
-        #             num_tokens * tokens_to_queries.gather_idxs[:, :, None]
-        #             + tokens_to_keys.gather_idxs[:, None, :]
-        #         ),
-        #         gather_mask=(
-        #             tokens_to_queries.gather_mask[:, :, None]
-        #             & tokens_to_keys.gather_mask[:, None, :]
-        #         ),
-        #         input_shape=torch.tensor((num_tokens, num_tokens), device=torch.device('cpu')),
-        #     )
-            # Gather the conditioning and add it to the atom-pair activations.
-        # pair_act += atom_layout.convert(
-        #         trunk_pair_to_atom_pair, trunk_pair_cond, layout_axes=(-3, -2)
-        #     )
         pair_act += atom_layout.convertV2(
             (
                     # num_tokens * tokens_to_queries.gather_idxs[:, :, None]
@@ -396,18 +344,6 @@ class AtomCrossAttEncoder(nn.Module):
             ),
              trunk_pair_cond, layout_axes=(-3, -2)
         )
-
-        # Embed pairwise offsets
-        # queries_ref_pos = atom_layout.convert(
-        #     batch.atom_cross_att.token_atoms_to_queries,
-        #     batch.ref_structure.positions,
-        #     layout_axes=(-3, -2),
-        # )
-        # queries_ref_space_uid = atom_layout.convert(
-        #     batch.atom_cross_att.token_atoms_to_queries,
-        #     batch.ref_structure.ref_space_uid,
-        #     layout_axes=(-2, -1),
-        # )
         queries_ref_pos = atom_layout.convertV2(
             # batch.atom_cross_att.token_atoms_to_queries,
             acat_atoms_to_q_gather_idxs,
@@ -422,17 +358,6 @@ class AtomCrossAttEncoder(nn.Module):
             ref_space_uid,
             layout_axes=(-2, -1),
         )
-        # keys_ref_pos = atom_layout.convert(
-        #     batch.atom_cross_att.queries_to_keys,
-        #     queries_ref_pos,
-        #     layout_axes=(-3, -2),
-        # )
-        # keys_ref_space_uid = atom_layout.convert(
-        #     batch.atom_cross_att.queries_to_keys,
-        #     batch.ref_structure.ref_space_uid,
-        #     layout_axes=(-2, -1),
-        # )
-
         keys_ref_pos = atom_layout.convertV2(
             # batch.atom_cross_att.queries_to_keys,
             acat_q_to_k_gather_idxs,
@@ -486,11 +411,6 @@ class AtomCrossAttEncoder(nn.Module):
 
         queries_act = self.project_atom_features_for_aggr(queries_act)
 
-        # token_atoms_act = atom_layout.convert(
-        #     batch.atom_cross_att.queries_to_token_atoms,
-        #     queries_act,
-        #     layout_axes=(-3, -2),
-        # )
         token_atoms_act = atom_layout.convertV2(
             acat_q_to_atom_gather_idxs,
             acat_q_to_atom_gather_mask,

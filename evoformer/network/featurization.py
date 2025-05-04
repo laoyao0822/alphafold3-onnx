@@ -74,13 +74,6 @@ def create_relative_encodingV2(
     max_relative_chain: int
 ) -> torch.Tensor:
     """Add relative position encodings."""
-    # rel_feats = []
-    # token_index = seq_features.token_index
-    # residue_index = seq_features.residue_index
-    # asym_id = seq_features.asym_id
-    # entity_id = seq_features.entity_id
-    # sym_id = seq_features.sym_id
-    # rel_feats = []
     left_asym_id = asym_id[:, None]
     right_asym_id = asym_id[None, :]
 
@@ -142,9 +135,7 @@ def create_relative_encodingV2(
     )
     rel_chain = torch.nn.functional.one_hot(final_rel_chain.to(
         dtype=torch.int64), 2 * max_relative_chain + 2)
-    # print(rel_pos.dtype,rel_token.dtype,rel_chain.dtype)
-    # rel_entity = entity_id_same.to(dtype=rel_pos.dtype)[..., None]
-    # print("rel_pos",rel_pos.shape,"rel_token",rel_token.shape,"entity_id_same",entity_id_same[..., None].shape,"rel_chain",rel_chain.shape)
+
     rel_feats=[rel_pos,rel_token,
                entity_id_same.to(dtype=rel_pos.dtype)[..., None],rel_chain]
     # rel_feats.append(rel_chain)

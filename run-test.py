@@ -51,6 +51,8 @@ from diffusionWorker2.diffusionOne import diffusion
 
 from diffusionWorker2.misc import params as diffusion_params
 from diffusionWorker2.diffusion_step_vino import diffusion_vino
+from evoformer import preprocess
+
 DIFFUSION_ONNX=False
 SAVE_ONNX=False
 UseVino=False
@@ -382,9 +384,11 @@ class ModelRunner:
                     # attn_mask_4=pair_mask.to(torch.bool)[:, None, None, :].expand(-1,4,-1,-1).contiguous()
                     pair_mask = pair_mask.to(dtype=torch.bool).contiguous()
 
-                    # attn_mask_seq_c=attn_mask_seq.clone()
-                    # pair_mask_c=pair_mask.clone()
-                    # attn_mask_4_c=attn_mask_4.clone()
+                    rel_feat = preprocess.get_rel_feat(token_index=batch.token_features.token_index,
+                                                       residue_index=batch.token_features.residue_index,
+                                                       asym_id=batch.token_features.asym_id,
+                                                       entity_id=batch.token_features.entity_id,
+                                                       sym_id=batch.token_features.sym_id, dtype=target_feat.dtype)
 
 
                     if SAVE_EVO_ONNX:
@@ -428,7 +432,7 @@ class ModelRunner:
                             # with profile(activities=[ProfilerActivity.CPU],
                             # profile_memory=False, record_shapes=False) as prof:
                             positions[i] = self.diffusion.forward(featurised_example,single=embeddings['single'], pair=embeddings['pair'],
-                                                      target_feat=target_feat,seq_mask=seq_mask,
+                                                      target_feat=target_feat,real_feat=rel_feat,seq_mask=seq_mask,
                                                       )
                             # print(prof.key_averages().table(sort_by="cpu_time_total", row_limit=500))
                             # exit(0)

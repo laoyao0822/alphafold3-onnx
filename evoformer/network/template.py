@@ -405,9 +405,9 @@ class SingleTemplateEmbedding(nn.Module):
         # print("construct_input:",time.time()-time1)
 
 
-        for in_concat,n_input_dims in to_concat:
-            print("in_concat",in_concat.shape,n_input_dims)
-        print("construct_input:",time.time()-time1)        # act = 0
+        # for in_concat,n_input_dims in to_concat:
+        #     print("in_concat",in_concat.shape,n_input_dims)
+        # print("construct_input:",time.time()-time1)        # act = 0
 
         query_embedding = self.query_embedding_norm(query_embedding)
         # for x, n_input_dims in to_concat:

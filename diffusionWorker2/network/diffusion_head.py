@@ -153,7 +153,8 @@ class DiffusionHead(nn.Module):
 
     def _conditioning(
         self,
-        token_index, residue_index, asym_id, entity_id, sym_id,
+        # token_index, residue_index, asym_id, entity_id, sym_id,
+        rel_features,
         # embeddings: dict[str, torch.Tensor],
         single, pair, target_feat,
         noise_level: torch.Tensor,
@@ -165,14 +166,16 @@ class DiffusionHead(nn.Module):
         # rel_features = featurization.create_relative_encoding(
         #         #     batch.token_features, max_relative_idx=32, max_relative_chain=2
         #         # ).to(dtype=pair.dtype)
-        rel_features = featurization.create_relative_encoding(
-            token_index=token_index,
-            residue_index=residue_index,
-            asym_id=asym_id,
-            entity_id=entity_id,
-            sym_id=sym_id
-        , max_relative_idx=32, max_relative_chain=2
-        ).to(dtype=pair.dtype)
+        # rel_features = featurization.create_relative_encoding(
+        #     token_index=token_index,
+        #     residue_index=residue_index,
+        #     asym_id=asym_id,
+        #     entity_id=entity_id,
+        #     sym_id=sym_id
+        # , max_relative_idx=32, max_relative_chain=2
+        # ).to(dtype=pair.dtype)
+
+
         features_2d = torch.concatenate([pair, rel_features], dim=-1)
 
         pair_cond = self.pair_cond_initial_projection(
@@ -185,6 +188,8 @@ class DiffusionHead(nn.Module):
         # target_feat = embeddings['target_feat']
         features_1d = torch.concatenate(
             [single, target_feat], dim=-1)
+
+
         single_cond = self.single_cond_initial_projection(
             self.single_cond_initial_norm(features_1d))
 
@@ -204,7 +209,8 @@ class DiffusionHead(nn.Module):
     def forward(
         self,
         single,pair,target_feat,
-        token_index, residue_index, asym_id, entity_id, sym_id,
+        # token_index, residue_index, asym_id, entity_id, sym_id,
+        real_feat,
         seq_mask, pred_dense_atom_mask,
         ref_ops, ref_mask, ref_element, ref_charge, ref_atom_name_chars, ref_space_uid,
 
@@ -246,27 +252,13 @@ class DiffusionHead(nn.Module):
         noise_level=t_hat
         # Get conditioning
         trunk_single_cond, trunk_pair_cond = self._conditioning(
-            # batch=batch,
-            # token_index=batch.token_features.token_index,
-            # residue_index=batch.token_features.residue_index,
-            # asym_id=batch.token_features.asym_id,
-            # entity_id=batch.token_features.entity_id,
-            # sym_id=batch.token_features.sym_id,
-            token_index=token_index, residue_index=residue_index,
-            asym_id=asym_id, entity_id=entity_id, sym_id=sym_id,
-            # embeddings=embeddings,
-            # single=embeddings['single'], pair=embeddings['pair'], target_feat=embeddings['target_feat'],
+
+            rel_features=real_feat,
             single=single, pair=pair, target_feat=target_feat,
             noise_level=noise_level,
             # use_conditioning=use_conditioning,
         )
 
-        # Extract features
-        # seq_mask = batch.token_features.mask
-        # pred_dense_atom_mask = batch.predicted_structure_info.atom_mask
-
-        # Position features
-        # act = positions_noisy * atom_mask[..., None]
         act = positions_noisy * pred_dense_atom_mask[..., None] / torch.sqrt(noise_level**2 + SIGMA_DATA**2)
 
         enc = self.atom_cross_att_encoder(

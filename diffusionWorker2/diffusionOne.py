@@ -213,7 +213,8 @@ class diffusion():
     def _apply_denoising_step(
             self,
             single, pair, target_feat,
-            token_index, residue_index, asym_id, entity_id, sym_id,
+            # token_index, residue_index, asym_id, entity_id, sym_id,
+            real_feat,
             seq_mask,
             pred_dense_atom_mask,
             ref_ops, ref_mask, ref_element, ref_charge, ref_atom_name_chars, ref_space_uid,
@@ -260,8 +261,9 @@ class diffusion():
         # print("that ",t_hat.dtype,"noise_level",noise_level.dtype)
         positions_out = self.diffusion_head(
             single=single, pair=pair, target_feat=target_feat,
-            token_index=token_index, residue_index=residue_index,
-            asym_id=asym_id, entity_id=entity_id, sym_id=sym_id,
+            # token_index=token_index, residue_index=residue_index,
+            # asym_id=asym_id, entity_id=entity_id, sym_id=sym_id,
+            real_feat=real_feat,
             seq_mask=seq_mask,
             pred_dense_atom_mask=pred_dense_atom_mask,
             ref_ops=ref_ops, ref_mask=ref_mask, ref_element=ref_element, ref_charge=ref_charge,
@@ -296,7 +298,7 @@ class diffusion():
     def _sample_diffusion(
             self,
             batch: feat_batch.Batch,
-            single, pair, target_feat,seq_mask
+            single, pair, target_feat,seq_mask,real_feat
             # embeddings: dict[str, torch.Tensor],
 
     ):
@@ -310,9 +312,10 @@ class diffusion():
 
         noise_level = noise_levels[0]
         positions = torch.randn(
-            pred_dense_atom_mask.shape + (3,), device=device).contiguous()
+            pred_dense_atom_mask.shape + (3,), device=device,dtype=torch.bfloat16).contiguous()
         positions *= noise_level
 
+        real_feat=real_feat.to(positions.dtype).contiguous()
         # noise_level = torch.tile(noise_levels[None, 0], (num_samples,))
         single_c = single
         pair_c = pair
@@ -328,11 +331,7 @@ class diffusion():
             positions = self._apply_denoising_step(
                 # single=embeddings['single'], pair=embeddings['pair'], target_feat=embeddings['target_feat'],
                 single=single_c, pair=pair_c, target_feat=target_feat_c,
-                token_index=batch.token_features.token_index,
-                residue_index=batch.token_features.residue_index,
-                asym_id=batch.token_features.asym_id,
-                entity_id=batch.token_features.entity_id,
-                sym_id=batch.token_features.sym_id,
+                real_feat=real_feat,
                 seq_mask=seq_mask,
                 pred_dense_atom_mask=pred_dense_atom_mask,
                 ref_ops=batch.ref_structure.positions,
@@ -363,12 +362,11 @@ class diffusion():
 
 
 
-    def forward(self, batch: dict[str, torch.Tensor], single, pair, target_feat,seq_mask=None):
+    def forward(self, batch: dict[str, torch.Tensor], single, pair, target_feat,real_feat,seq_mask=None):
         self.conversion_time=0
         batch = feat_batch.Batch.from_data_dict(batch)
-
         return self._sample_diffusion(batch,
-            single, pair, target_feat,seq_mask
+            single, pair, target_feat,seq_mask,real_feat=real_feat
         )
 
 
