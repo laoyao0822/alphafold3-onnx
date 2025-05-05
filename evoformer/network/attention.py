@@ -315,7 +315,7 @@ class GridSelfAttention(nn.Module):
         #     print("attention time:",time.time()-time1)
         if self.transpose:
             pair = pair.permute(1, 0, 2)
-        return pair
+        return pair.contiguous()
 
 
 

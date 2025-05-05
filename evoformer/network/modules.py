@@ -13,6 +13,7 @@ import torch
 import torch.nn as nn
 # from torch.nn import RMSNorm as LayerNorm
 
+
 from torch.nn import LayerNorm
 from evoformer.network.gated_linear_unit import gated_linear_unit_torch
 

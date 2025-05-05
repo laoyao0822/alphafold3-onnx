@@ -436,7 +436,6 @@ class ModelRunner:
                             # print(prof.key_averages().table(sort_by="cpu_time_total", row_limit=500))
                             # exit(0)
 
-
                         else:
                             positions[i] = self.diffusion.forward(featurised_example,single=embeddings['single'], pair=embeddings['pair'],
                                                       target_feat=target_feat,
