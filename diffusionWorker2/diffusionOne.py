@@ -245,7 +245,7 @@ class diffusion():
 
         positions = diffusion_head.random_augmentation(
             positions=positions, mask=pred_dense_atom_mask
-        )
+        ).contiguous()
         #step1
         # gamma = self.gamma_0 * (noise_level > self.gamma_min)
         # t_hat = noise_level_prev * (1 + gamma)
@@ -365,15 +365,14 @@ class diffusion():
         # print("transformer sum_time:",self.diffusion_head.sum_time)
             # if (step_idx % 200) == 0:
             # print("noise_level: ", noise_level)
-        print("conversion cost time :",self.conversion_time)
         return positions
 
 
 
 
-    def forward(self, batch: dict[str, torch.Tensor], single, pair, target_feat,real_feat,seq_mask=None):
+    def forward(self, batch, single, pair, target_feat,real_feat,seq_mask=None):
         self.conversion_time=0
-        batch = feat_batch.Batch.from_data_dict(batch)
+        # batch = feat_batch.Batch.from_data_dict(batch)
         return self._sample_diffusion(batch,
             single, pair, target_feat,seq_mask,real_feat=real_feat
         )

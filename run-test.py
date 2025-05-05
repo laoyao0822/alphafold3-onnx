@@ -114,7 +114,7 @@ _CPU_INFERENCE = flags.DEFINE_bool(
 # control the number of threads used by the data pipeline.
 _NUM_THREADS = flags.DEFINE_integer(
     'num_cpu_threads',
-    60,
+    119,
     'Number of threads to use for the data pipeline.',
 )
 
@@ -229,7 +229,7 @@ class ModelRunner:
         else:
             print('import evoformer torch')
             self.evoformer=EvoFormerOne()
-            self.evoformer.eval()
+            self.evoformer.evoformer.eval()
             evoformer_params.import_evoformer_jax_weights_(self.evoformer.evoformer,model_dir)
 
         # diffusion=onnx.load('/root/pycharm/diffusion_onnx5/diffusion.onnx',load_external_data=True)
@@ -250,7 +250,7 @@ class ModelRunner:
         elif SAVE_ONNX or not DIFFUSION_ONNX:
             print("select diffusion2")
             self.diffusion=diffusion()
-            self.diffusion.diffusion_head.eval()
+            # self.diffusion.eval()
             # diffusion_params.import_jax_weights_(self.diffusion.apply_step,model_dir)
             self.diffusion.import_diffusion_head_params(model_dir)
         #
@@ -276,7 +276,7 @@ class ModelRunner:
                 self._model = ipex.optimize(self._model,weights_prepack=False,optimize_lstm=True,auto_kernel_selection=True,dtype=torch.bfloat16)
 
                 self.target_feat = ipex.optimize(self.target_feat,weights_prepack=False,optimize_lstm=True,auto_kernel_selection=True,dtype=torch.bfloat16)
-                self.evoformer = ipex.optimize(self.evoformer,weights_prepack=False,optimize_lstm=True,auto_kernel_selection=True,dtype=torch.bfloat16)
+                self.evoformer.evoformer = ipex.optimize(self.evoformer.evoformer,weights_prepack=False,optimize_lstm=True,auto_kernel_selection=True,dtype=torch.bfloat16)
                 # self.evoformer.evoformer = torch.compile(self.evoformer.evoformer, backend="ipex")
                 if not UseVino:
                     self.diffusion.diffusion_head = ipex.optimize(self.diffusion.diffusion_head,weights_prepack=False,optimize_lstm=True,auto_kernel_selection=True,dtype=torch.bfloat16)
@@ -390,7 +390,6 @@ class ModelRunner:
                                                        entity_id=batch.token_features.entity_id,
                                                        sym_id=batch.token_features.sym_id, dtype=target_feat.dtype)
 
-
                     if SAVE_EVO_ONNX:
                         self.evoformer.getOnnxModel(featurised_example,target_feat,EVO_ONNX_PATH)
 
@@ -399,7 +398,7 @@ class ModelRunner:
                     time1=time.time()
                     # with profile(activities=[ProfilerActivity.CPU],
                                  # profile_memory=False, record_shapes=False) as prof:
-                    embeddings=self.evoformer(batch,target_feat,attn_mask_4=attn_mask_4, pair_mask=pair_mask,attn_mask_seq=attn_mask_seq)
+                    embeddings=self.evoformer.forward(batch,target_feat,attn_mask_4=attn_mask_4, pair_mask=pair_mask,attn_mask_seq=attn_mask_seq)
                     # print(prof.key_averages().table(sort_by="cpu_time_total", row_limit=500))
                     # exit(0)
                     # target_feat=target_feat_c
@@ -431,7 +430,7 @@ class ModelRunner:
                         if not UseVino:
                             # with profile(activities=[ProfilerActivity.CPU],
                             # profile_memory=False, record_shapes=False) as prof:
-                            positions[i] = self.diffusion.forward(featurised_example,single=embeddings['single'], pair=embeddings['pair'],
+                            positions[i] = self.diffusion.forward(batch,single=embeddings['single'], pair=embeddings['pair'],
                                                       target_feat=target_feat,real_feat=rel_feat,seq_mask=seq_mask,
                                                       )
                             # print(prof.key_averages().table(sort_by="cpu_time_total", row_limit=500))

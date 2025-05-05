@@ -11,6 +11,7 @@
 
 import torch
 import torch.nn as nn
+from numpy.random.tests.test_smoke import dtype
 
 from diffusionWorker2.misc import feat_batch
 from diffusionWorker2.network import featurization, utils
@@ -211,6 +212,7 @@ class DiffusionHead(nn.Module):
         single_cond += self.noise_embedding_initial_projection(
             self.noise_embedding_initial_norm(noise_embedding)
         )
+
         single_cond += self.single_transition_0(single_cond)
         single_cond += self.single_transition_1(single_cond)
 
@@ -269,7 +271,7 @@ class DiffusionHead(nn.Module):
         noise_scale = self.noise_scale * torch.sqrt(t_hat ** 2 - noise_level_prev ** 2)
         noise = noise_scale * torch.randn(size=positions.shape, device=noise_scale.device)
         # noise = noise_scale
-        positions_noisy = positions + noise
+        positions = positions + noise
 
         noise_level_back=noise_level
         noise_level=t_hat
@@ -283,7 +285,9 @@ class DiffusionHead(nn.Module):
         )
         # trunk_pair_cond=pair.clone()
 
-        act = positions_noisy * pred_dense_atom_mask[..., None] / torch.sqrt(noise_level**2 + SIGMA_DATA**2)
+        act = positions * pred_dense_atom_mask[..., None] / torch.sqrt(noise_level**2 + SIGMA_DATA**2)
+
+        act=act.to(dtype=positions.dtype).contiguous()
 
         enc = self.atom_cross_att_encoder(
             ref_ops=ref_ops, ref_mask=ref_mask, ref_element=ref_element, ref_charge=ref_charge,
@@ -312,7 +316,6 @@ class DiffusionHead(nn.Module):
         act += self.single_cond_embedding_projection(
             self.single_cond_embedding_norm(trunk_single_cond)
         )
-
         # time1=time.time()
         act = self.transformer(
             act=act,
@@ -345,7 +348,7 @@ class DiffusionHead(nn.Module):
         )
 
         positions_denoised= (
-            skip_scaling * positions_noisy + out_scaling * position_update
+            skip_scaling * positions + out_scaling * position_update
         ) * pred_dense_atom_mask[..., None]
         # return (
         #     skip_scaling * positions_noisy + out_scaling * position_update
@@ -354,9 +357,9 @@ class DiffusionHead(nn.Module):
 
 
         #step1
-        grad = (positions_noisy - positions_denoised) / t_hat
+        grad = (positions - positions_denoised) / t_hat
 
         d_t = noise_level_back - t_hat
-        positions_out = positions_noisy + self.step_scale * d_t * grad
+        positions_out = positions + self.step_scale * d_t * grad
 
         return positions_out

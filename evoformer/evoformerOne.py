@@ -13,6 +13,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 from torch import distributed as dist
+from typing import Optional
 
 from evoformer import preprocess
 from evoformer.network import featurization
@@ -123,8 +124,8 @@ class Evoformer(nn.Module):
         asym_id,
         template_aatype, template_atom_positions, template_atom_mask,
         pair_activations: torch.Tensor,
-        pair_mask: torch.Tensor,
-        attn_mask: torch.Tensor,
+        pair_mask: Optional[torch.Tensor] = None,
+        attn_mask: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         """Embeds Templates and merges into pair activations."""
         # templates = batch.templates
@@ -170,9 +171,9 @@ class Evoformer(nn.Module):
         # msa_batch: features.MSA,
         rows, mask, deletion_matrix,
         pair_activations: torch.Tensor,
-        pair_mask: torch.Tensor,
         target_feat: torch.Tensor,
-        pair_mask_attn: torch.Tensor,
+        pair_mask: Optional[torch.Tensor] = None,
+        pair_mask_attn: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         """Processes MSA and returns updated pair activations."""
         dtype = pair_activations.dtype
@@ -222,11 +223,6 @@ class Evoformer(nn.Module):
         pair_activations = self._seq_pair_embedding(
             target_feat
         )
-
-        pair_activations += self.prev_embedding(
-            self.prev_embedding_layer_norm(pair))
-
-
         # pair_activations = self._relative_encoding(batch, pair_activations)
 
 
@@ -234,6 +230,9 @@ class Evoformer(nn.Module):
         pair_activations += self.position_activations(rel_feat)
 
         pair_activations += self.bond_embedding(contact_matrix)
+
+        pair_activations += self.prev_embedding(
+            self.prev_embedding_layer_norm(pair))
 
         single_activations = self.single_activations(target_feat)
         # pair_mask_c=pair_mask.clone()
@@ -247,8 +246,8 @@ class Evoformer(nn.Module):
             asym_id=asym_id, template_aatype=template_aatype,
             template_atom_positions=template_atom_positions, template_atom_mask=template_atom_mask,
             pair_activations=pair_activations,
-            pair_mask=pair_mask,
-            attn_mask=attn_mask_4
+            # pair_mask=pair_mask,
+            # attn_mask=attn_mask_4
             # pair_mask=pair_mask,
 
         )
@@ -257,9 +256,9 @@ class Evoformer(nn.Module):
             # msa_batch=batch.msa,
             msa, msa_mask, deletion_matrix,
             pair_activations=pair_activations,
-            pair_mask=pair_mask,
             target_feat=target_feat,
-            pair_mask_attn=attn_mask_4,
+            # pair_mask=pair_mask,
+            # pair_mask_attn=attn_mask_4,
         )
 
         # print("_embed_process_msa over")
@@ -269,14 +268,14 @@ class Evoformer(nn.Module):
 
         return single_activations,pair_activations
 
-class EvoFormerOne(nn.Module):
+class EvoFormerOne():
 
     def __init__(self, num_recycles: int = 10, num_samples: int = 5, diffusion_steps: int = 200):
         super(EvoFormerOne, self).__init__()
 
-        self.num_recycles = num_recycles
+        # self.num_recycles = num_recycles
         # self.num_recycles = 2
-        # self.num_recycles = 0
+        self.num_recycles = 0
         self.num_samples = num_samples
 
         self.evoformer_pair_channel = 128
@@ -396,16 +395,13 @@ class EvoFormerOne(nn.Module):
 
     def forward(self, batch,target_feat
                 ,attn_mask_4,pair_mask,attn_mask_seq,
-
-
-
                 # pair_activations,pair_mask,
 
                 ) -> dict[str, torch.Tensor]:
         # batch = feat_batch.Batch.from_data_dict(batch)
         num_res = batch.num_res
         #target_feat torch.Size([37, 447])
-        
+        target_feat = target_feat.to(dtype=torch.bfloat16).contiguous()
         # target_feat1=self.create_target_feat_embedding(batch)
         pair= torch.zeros(
                 [num_res, num_res, self.evoformer_pair_channel], device=target_feat.device,
@@ -431,7 +427,7 @@ class EvoFormerOne(nn.Module):
         seq_mask = batch.token_features.mask
         num_tokens = seq_mask.shape[0]
 
-        template_atom_positions=batch.templates.atom_positions.to(dtype=torch.bfloat16)
+        template_atom_positions=batch.templates.atom_positions.to(dtype=torch.bfloat16).contiguous()
 
         # time1=time.time()
         for _ in range(self.num_recycles + 1):

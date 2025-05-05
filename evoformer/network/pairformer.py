@@ -73,11 +73,11 @@ class PairformerBlock(nn.Module):
     def forward(
         self,
         pair: torch.Tensor,
-        pair_mask: torch.Tensor,
+        pair_mask: Optional[torch.Tensor] = None,
         single: Optional[torch.Tensor] = None,
         seq_mask: Optional[torch.Tensor] = None,
         pair_mask_attn: Optional[torch.Tensor] = None,
-    ) -> tuple[Optional[torch.Tensor], torch.Tensor]:
+    ) :
         """
         Forward pass of the PairformerBlock.
 
@@ -142,8 +142,8 @@ class EvoformerBlock(nn.Module):
         msa: torch.Tensor,
         pair: torch.Tensor,
         msa_mask: torch.Tensor,
-        pair_mask: torch.Tensor,
-        pair_mask_attn:torch.Tensor,
+        pair_mask: Optional[torch.Tensor] = None,
+        pair_mask_attn: Optional[torch.Tensor] = None,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         pair += self.outer_product_mean(msa, msa_mask)
         msa += self.msa_attention1(msa, msa_mask, pair)
