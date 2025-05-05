@@ -273,9 +273,9 @@ class EvoFormerOne():
     def __init__(self, num_recycles: int = 10, num_samples: int = 5, diffusion_steps: int = 200):
         super(EvoFormerOne, self).__init__()
 
-        # self.num_recycles = num_recycles
+        self.num_recycles = num_recycles
         # self.num_recycles = 2
-        self.num_recycles = 0
+        # self.num_recycles = 0
         self.num_samples = num_samples
 
         self.evoformer_pair_channel = 128
@@ -294,7 +294,7 @@ class EvoFormerOne():
         single = torch.zeros(
             [num_res, self.evoformer_seq_channel], dtype=torch.float32, device=target_feat.device,
         )
-        contact_matrix = self.get_contact_matrix(
+        contact_matrix = preprocess.get_contact_matrix(
             gather_idxs_polymer_ligand=batch.polymer_ligand_bond_info.tokens_to_polymer_ligand_bonds.gather_idxs,
             tokens_to_polymer_ligand_bonds_gather_mask=batch.polymer_ligand_bond_info.tokens_to_polymer_ligand_bonds.gather_mask,
             gather_idxs_ligand_ligand=batch.ligand_ligand_bond_info.tokens_to_ligand_ligand_bonds.gather_idxs,
