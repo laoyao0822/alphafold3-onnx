@@ -252,7 +252,6 @@ class GridSelfAttention(nn.Module):
         pair = pair.contiguous()
         # attn_mask = attn_mask.to(dtype=torch.bfloat16).contiguous()
 
-
         # print("start to send",combined_tensor.shape,combined_tensor.dtype)
         se=dist.isend(pair, dst=1)
 
@@ -302,19 +301,21 @@ class GridSelfAttention(nn.Module):
             torch.Tensor: [N_token, N_token, c_pair]
         """
         pair = self.act_norm(pair)
-        seq_len = pair.shape[0]
+        # seq_len = pair.shape[0]
         #torch.Size([583, 583, 64]) torch.Size([583, 583]) torch.Size([4, 583, 583])
         if self.transpose:
             pair = pair.permute(1, 0, 2)
 
-        if self.world_size > 1 and config._GridAttention_TP and seq_len>config._GridAttention_TP_Min_TOKEN:
-            pair = self._attention_tp(pair, attn_mask=attn_mask).contiguous()
-        else:
-            pair = self._attention(pair, attn_mask=attn_mask)
+        pair = self._attention(pair, attn_mask=attn_mask)
+        # if self.world_size > 1 and config._GridAttention_TP and seq_len>config._GridAttention_TP_Min_TOKEN:
+        #     pair = self._attention_tp(pair, attn_mask=attn_mask).contiguous()
+        # else:
+        #     pair = self._attention(pair, attn_mask=attn_mask)
         # if self.c_pair==128:
         #     print("attention time:",time.time()-time1)
         if self.transpose:
             pair = pair.permute(1, 0, 2)
+
         return pair.contiguous()
 
 
