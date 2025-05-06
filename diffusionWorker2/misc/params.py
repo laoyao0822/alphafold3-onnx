@@ -575,8 +575,11 @@ def DiffusionHeadParams(head):
         "pair_cond_initial_projection": LinearParams(head.pair_cond_initial_projection),
         **cat_params(DiffusionTransitionParams(head.pair_transition_0), "pair_transition_0ffw_"),
         **cat_params(DiffusionTransitionParams(head.pair_transition_1), "pair_transition_1ffw_"),
+
+
         "single_cond_initial_norm": LayerNormParams(head.single_cond_initial_norm, use_bias=False),
         "single_cond_initial_projection": LinearParams(head.single_cond_initial_projection),
+
         "noise_embedding_initial_norm": LayerNormParams(head.noise_embedding_initial_norm, use_bias=False),
         "noise_embedding_initial_projection": LinearParams(head.noise_embedding_initial_projection),
         **cat_params(DiffusionTransitionParams(head.single_transition_0), "single_transition_0ffw_"),
@@ -592,9 +595,22 @@ def DiffusionHeadParams(head):
         "output_norm": LayerNormParams(head.output_norm, use_bias=False),
         **cat_params(AtomCrossAttDecoderParams(head.atom_cross_att_decoder), "diffusion_")
     }
+
+def PreModelParams(head):
+    return {
+        "pair_cond_initial_norm": LayerNormParams(head.pair_cond_initial_norm, use_bias=False),
+        "pair_cond_initial_projection": LinearParams(head.pair_cond_initial_projection),
+        **cat_params(DiffusionTransitionParams(head.pair_transition_0), "pair_transition_0ffw_"),
+        **cat_params(DiffusionTransitionParams(head.pair_transition_1),"pair_transition_1ffw_"),
+        "single_cond_initial_norm": LayerNormParams(head.single_cond_initial_norm, use_bias=False),
+        "single_cond_initial_projection": LinearParams(head.single_cond_initial_projection),
+
+    }
+
 def get_translation_dict(model):
     translations = {
         "~/diffusion_head": DiffusionHeadParams(model.diffusion_head),
+        "~/pre_model": PreModelParams(model.pre_model)
     }
 
     return translations

@@ -25,6 +25,9 @@ import diffusionWorker2.misc.feat_batch as feat_batch
 from diffusionWorker2.network import diffusion_head
 from diffusionWorker2.network.diffusion_step import DiffusionStep
 from diffusionWorker2.network.dot_product_attention import get_attn_mask
+
+from diffusionWorker2.premodel.pre_diffusion import DiffusionHead as pre_diffusion
+
 import onnx
 import numpy as np
 class diffusion():
@@ -40,6 +43,11 @@ class diffusion():
         self.step_scale = 1.5
         self.diffusion_head = diffusion_head.DiffusionHead()
         self.diffusion_head.eval()
+
+        self.pre_model=pre_diffusion()
+
+
+
         self.conversion_time=0
 
     def import_diffusion_head_params(self,model_path: pathlib.Path):

@@ -11,7 +11,6 @@
 
 import torch
 import torch.nn as nn
-from numpy.random.tests.test_smoke import dtype
 
 from diffusionWorker2.misc import feat_batch
 from diffusionWorker2.network import featurization, utils
@@ -218,24 +217,12 @@ class DiffusionHead(nn.Module):
 
         return single_cond, pair_cond
 
-    # def _conditioning(self,noise_level,single):
-    #     noise_embedding = self.fourier_embeddings(
-    #         (1 / 4) * torch.log(noise_level / SIGMA_DATA)
-    #     )
-    #
-    #     single_cond = single+self.noise_embedding_initial_projection(
-    #         self.noise_embedding_initial_norm(noise_embedding)
-    #     )
-    #
-    #     single_cond += self.single_transition_0(single_cond)
-    #     single_cond += self.single_transition_1(single_cond)
-    #
-    #     return single_cond
 
     def forward(
         self,
         single,pair,target_feat,real_feat,
-        # token_index, residue_index, asym_id, entity_id, sym_id,
+
+
         seq_mask, pred_dense_atom_mask,
         ref_ops, ref_mask, ref_element, ref_charge, ref_atom_name_chars, ref_space_uid,
 
@@ -257,12 +244,6 @@ class DiffusionHead(nn.Module):
         # embeddings: dict[str, torch.Tensor],
         # use_conditioning: bool
     ) -> torch.Tensor:
-        #step2
-        # torch.save({"positions": positions,"mask":pred_dense_atom_mask},"/root/pycharm/random_aug.pt")
-        # positions = random_augmentation(
-        #     positions=positions, mask=pred_dense_atom_mask
-        # )
-        # exit(0)
 
         #step1
         gamma = self.gamma_0 * (noise_level > self.gamma_min)
@@ -353,8 +334,6 @@ class DiffusionHead(nn.Module):
         # return (
         #     skip_scaling * positions_noisy + out_scaling * position_update
         # ) * pred_dense_atom_mask[..., None]
-
-
 
         #step1
         grad = (positions - positions_denoised) / t_hat

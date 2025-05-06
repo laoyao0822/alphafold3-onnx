@@ -250,6 +250,8 @@ class ModelRunner:
         elif SAVE_ONNX or not DIFFUSION_ONNX:
             print("select diffusion2")
             self.diffusion=diffusion()
+            self.diffusion.diffusion_head.eval()
+            self.diffusion.pre_model.eval()
             # self.diffusion.eval()
             # diffusion_params.import_jax_weights_(self.diffusion.apply_step,model_dir)
             self.diffusion.import_diffusion_head_params(model_dir)
