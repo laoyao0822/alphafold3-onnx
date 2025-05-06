@@ -166,7 +166,8 @@ class DiffusionHead(nn.Module):
         trunk_single_cond,pair_logits_cat,
         # single,
 
-        seq_mask, pred_dense_atom_mask,
+        # seq_mask,
+        pred_dense_atom_mask,
         queries_mask,
         acat_atoms_to_q_gather_idxs,
         acat_atoms_to_q_gather_mask,
@@ -182,7 +183,12 @@ class DiffusionHead(nn.Module):
         # embeddings: dict[str, torch.Tensor],
         # use_conditioning: bool
     ) -> torch.Tensor:
+        pair_act = pair_act.clone().contiguous()
+        queries_single_cond = queries_single_cond.clone().contiguous()
+        keys_single_cond = keys_single_cond.clone().contiguous()
+        trunk_single_cond = trunk_single_cond.clone().contiguous()
 
+        seq_mask=None
         #step1
         gamma = self.gamma_0 * (noise_level > self.gamma_min)
         t_hat = noise_level_prev * (1 + gamma)

@@ -405,7 +405,7 @@ class EvoFormerOne():
         # target_feat1=self.create_target_feat_embedding(batch)
         pair= torch.zeros(
                 [num_res, num_res, self.evoformer_pair_channel], device=target_feat.device,
-                dtype=torch.bfloat16,
+                dtype=torch.float32,
             )
         single=torch.zeros(
                 [num_res, self.evoformer_seq_channel], dtype=pair.dtype, device=target_feat.device,

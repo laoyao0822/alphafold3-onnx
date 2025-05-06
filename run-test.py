@@ -54,8 +54,8 @@ from diffusionWorker2.diffusion_step_vino import diffusion_vino
 from evoformer import preprocess
 
 DIFFUSION_ONNX=False
-SAVE_ONNX=False
-UseVino=True
+SAVE_ONNX=True
+UseVino=False
 SAVE_EVO_ONNX=False
 USE_EVO_VINO= False
 SAVE_CONFIDENCE_ONNX=False

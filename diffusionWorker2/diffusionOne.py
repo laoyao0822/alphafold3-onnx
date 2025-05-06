@@ -125,7 +125,8 @@ class diffusion():
         ordered_keys = [
             'queries_single_cond', 'pair_act', 'keys_mask',
             'keys_single_cond', 'trunk_single_cond', 'pair_logits_cat',
-            'seq_mask','pred_dense_atom_mask',
+            # 'seq_mask',
+            'pred_dense_atom_mask',
             'queries_mask',
             'acat_atoms_to_q_gather_idxs', 'acat_atoms_to_q_gather_mask',
             'acat_q_to_k_gather_idxs', 'acat_q_to_k_gather_mask',
@@ -142,7 +143,7 @@ class diffusion():
             'trunk_single_cond': trunk_single_cond,
             'pair_logits_cat': pair_logits_cat,
 
-            'seq_mask': batch.token_features.mask,
+            # 'seq_mask': batch.token_features.mask,
             'pred_dense_atom_mask': batch.predicted_structure_info.atom_mask,
 
             'queries_mask': queries_mask,
@@ -186,7 +187,7 @@ class diffusion():
                               'trunk_single_cond': {0:seq_len},
                               'pair_logits_cat': {3:seq_len,4:seq_len},
 
-                              'seq_mask': {0: seq_len},
+                              # 'seq_mask': {0: seq_len},
                               'pred_dense_atom_mask': {0: seq_len},
                               'queries_mask': {0: edge_number},
 
@@ -250,12 +251,12 @@ class diffusion():
         ).contiguous()
 
         positions_out = self.diffusion_head(
-            queries_single_cond=queries_single_cond.clone(),
-            pair_act=pair_act.clone(), keys_mask=keys_mask, keys_single_cond=keys_single_cond.clone(),
+            queries_single_cond=queries_single_cond,
+            pair_act=pair_act, keys_mask=keys_mask, keys_single_cond=keys_single_cond,
 
-            trunk_single_cond=trunk_single_cond.clone(), pair_logits_cat=pair_logits_cat,
+            trunk_single_cond=trunk_single_cond, pair_logits_cat=pair_logits_cat,
 
-            seq_mask=seq_mask,
+            # seq_mask=seq_mask,
             pred_dense_atom_mask=pred_dense_atom_mask,
 
 
