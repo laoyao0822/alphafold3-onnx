@@ -220,6 +220,7 @@ class diffusion():
 
     def _apply_denoising_step(
             self,
+            queries_single_cond,
             trunk_single_cond, trunk_pair_cond,
             single,
             # token_index, residue_index, asym_id, entity_id, sym_id,
@@ -255,6 +256,8 @@ class diffusion():
         ).contiguous()
 
         positions_out = self.diffusion_head(
+            queries_single_cond=queries_single_cond.clone(),
+
             trunk_single_cond=trunk_single_cond.clone(), trunk_pair_cond=trunk_pair_cond.clone(),
 
             single=single,
@@ -295,7 +298,9 @@ class diffusion():
     def _sample_diffusion(
             self,
             batch: feat_batch.Batch,
-            single, pair, target_feat,seq_mask,real_feat
+            single, pair, target_feat,seq_mask,real_feat,
+            queries_single_cond,
+
             # embeddings: dict[str, torch.Tensor],
 
     ):
@@ -317,7 +322,7 @@ class diffusion():
 
         real_feat=real_feat.to(positions.dtype).contiguous()
         # noise_level = torch.tile(noise_levels[None, 0], (num_samples,))
-
+        queries_single_cond=queries_single_cond.to(dtype=positions.dtype).contiguous()
 
         trunk_single_cond, trunk_pair_cond = self.pre_model(
 
@@ -330,6 +335,7 @@ class diffusion():
 
         for step_idx in range(self.diffusion_steps):
             positions = self._apply_denoising_step(
+                queries_single_cond=queries_single_cond,
                 # single=embeddings['single'], pair=embeddings['pair'], target_feat=embeddings['target_feat'],
                 trunk_single_cond=trunk_single_cond, trunk_pair_cond=trunk_pair_cond,
                 single=single,
@@ -361,11 +367,11 @@ class diffusion():
 
 
 
-    def forward(self, batch, single, pair, target_feat,real_feat,seq_mask=None):
+    def forward(self, batch, single, pair, target_feat,real_feat,queries_single_cond,seq_mask=None):
         self.conversion_time=0
         # batch = feat_batch.Batch.from_data_dict(batch)
         return self._sample_diffusion(batch,
-            single, pair, target_feat,seq_mask,real_feat=real_feat
+            single, pair, target_feat,seq_mask,real_feat=real_feat,queries_single_cond=queries_single_cond,
         )
 
 

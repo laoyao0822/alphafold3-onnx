@@ -566,7 +566,21 @@ def PairformerBlockParams(b, with_single=False):
     return d
 
 
+def pre_AcEncoderParams(encoder,
+                              with_token_atoms_act=False,
+                              with_trunk_single_cond=False,
+                              with_trunk_pair_cond=False,
+                              prefix="evoformer_conditioning_atom_transformer_encoder"):
+    d = {
+        "embed_ref_pos": LinearParams(encoder.embed_ref_pos),
+        "embed_ref_mask": LinearParams(encoder.embed_ref_mask),
+        "embed_ref_element": LinearParams(encoder.embed_ref_element),
+        "embed_ref_charge": LinearParams(encoder.embed_ref_charge),
+        "embed_ref_atom_name": LinearParams(encoder.embed_ref_atom_name),
+    }
 
+
+    return d
 
 
 def DiffusionHeadParams(head):
@@ -604,7 +618,11 @@ def PreModelParams(head):
         **cat_params(DiffusionTransitionParams(head.pair_transition_1),"pair_transition_1ffw_"),
         "single_cond_initial_norm": LayerNormParams(head.single_cond_initial_norm, use_bias=False),
         "single_cond_initial_projection": LinearParams(head.single_cond_initial_projection),
-
+        **cat_params(pre_AcEncoderParams(head.atom_cross_att_encoder,
+                                               with_token_atoms_act=True,
+                                               with_trunk_pair_cond=True,
+                                               with_trunk_single_cond=True,
+                                               prefix="diffusion_atom_transformer_encoder"), "diffusion_"),
     }
 
 def get_translation_dict(model):

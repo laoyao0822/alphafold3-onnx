@@ -105,10 +105,7 @@ class DiffusionHead(nn.Module):
 
 
         self.c_single_cond_initial = 831
-        # self.single_cond_initial_norm = LayerNorm(
-        #     self.c_single_cond_initial, bias=False)
-        # self.single_cond_initial_projection = nn.Linear(
-        #     self.c_single_cond_initial, self.seq_channel, bias=False)
+
 
         self.c_noise_embedding = 256
         self.noise_embedding_initial_norm = LayerNorm(
@@ -170,7 +167,9 @@ class DiffusionHead(nn.Module):
 
     def forward(
         self,
-        trunk_single_cond, trunk_pair_cond,
+            queries_single_cond,
+
+            trunk_single_cond, trunk_pair_cond,
         single,
 
 
@@ -220,6 +219,7 @@ class DiffusionHead(nn.Module):
         act=act.to(dtype=positions.dtype).contiguous()
 
         enc = self.atom_cross_att_encoder(
+
             ref_ops=ref_ops, ref_mask=ref_mask, ref_element=ref_element, ref_charge=ref_charge,
             ref_atom_name_chars=ref_atom_name_chars, ref_space_uid=ref_space_uid,
             pred_dense_atom_mask=pred_dense_atom_mask,
@@ -240,6 +240,8 @@ class DiffusionHead(nn.Module):
             # trunk_single_cond=embeddings['single'],
             trunk_single_cond=single,
             trunk_pair_cond=trunk_pair_cond,
+            queries_single_cond=queries_single_cond,
+
         )
         act = enc.token_act
 

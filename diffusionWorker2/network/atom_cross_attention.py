@@ -189,31 +189,14 @@ class AtomCrossAttEncoder(nn.Module):
         acat_t_to_k_gather_mask,
         token_atoms_act,
         trunk_single_cond,
-        trunk_pair_cond
+        trunk_pair_cond,
+        queries_single_cond,
     ) -> AtomCrossAttEncoderOutput:
 
         assert (token_atoms_act is not None) == self.with_token_atoms_act
         assert (trunk_single_cond is not None) == self.with_trunk_single_cond
         assert (trunk_pair_cond is not None) == self.with_trunk_pair_cond
 
-        if self.queries_single_cond is None:
-            token_atoms_single_cond = self._per_atom_conditioning(
-                        ref_ops=ref_ops,
-                        ref_mask=ref_mask,
-                        ref_element=ref_element,
-                        ref_charge=ref_charge,
-                        ref_atom_name_chars=ref_atom_name_chars,
-            )
-            queries_single_cond = atom_layout.convertV2(
-                acat_atoms_to_q_gather_idxs,
-                acat_atoms_to_q_gather_mask,
-                token_atoms_single_cond,
-                layout_axes=(-3, -2),
-            )
-            self.queries_single_cond=queries_single_cond.to(dtype=token_atoms_act.dtype).contiguous()
-        else:
-            # print('hit cache')
-            queries_single_cond = self.queries_single_cond.clone().contiguous()
 
         queries_mask = atom_layout.convertV2(
             acat_atoms_to_q_gather_idxs,
@@ -354,6 +337,7 @@ class AtomCrossAttEncoder(nn.Module):
             self.pair_act_add=pair_act_add.to(dtype=pair_act.dtype).contiguous()
 
         pair_act+=self.pair_act_add
+
         # Run a small MLP on the pair acitvations
         pair_act2 = self.pair_mlp_1(torch.relu(pair_act))
         pair_act2 = self.pair_mlp_2(torch.relu(pair_act2))
