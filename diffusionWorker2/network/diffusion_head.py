@@ -100,21 +100,15 @@ class DiffusionHead(nn.Module):
         self.seq_channel = 384
 
         self.c_pair_cond_initial = 267
-        self.pair_cond_initial_norm = LayerNorm(
-            self.c_pair_cond_initial, bias=False)
-        self.pair_cond_initial_projection = nn.Linear(
-            self.c_pair_cond_initial, self.pair_channel, bias=False)
 
-        self.pair_transition_0 = DiffusionTransition(
-            self.pair_channel, c_single_cond=None)
-        self.pair_transition_1 = DiffusionTransition(
-            self.pair_channel, c_single_cond=None)
+
+
 
         self.c_single_cond_initial = 831
-        self.single_cond_initial_norm = LayerNorm(
-            self.c_single_cond_initial, bias=False)
-        self.single_cond_initial_projection = nn.Linear(
-            self.c_single_cond_initial, self.seq_channel, bias=False)
+        # self.single_cond_initial_norm = LayerNorm(
+        #     self.c_single_cond_initial, bias=False)
+        # self.single_cond_initial_projection = nn.Linear(
+        #     self.c_single_cond_initial, self.seq_channel, bias=False)
 
         self.c_noise_embedding = 256
         self.noise_embedding_initial_norm = LayerNorm(
@@ -151,33 +145,13 @@ class DiffusionHead(nn.Module):
         self.step_scale = 1.5
         self.sum_time=0
 
-        self.single_cond=None
-        self.pair_cond=None
 
-
-    # def _get_conditioning_pair_singe(self,rel_features,target_feat,pair,single):
-    #     features_2d = torch.concatenate([pair, rel_features], dim=-1)
-    #
-    #     pair_cond = self.pair_cond_initial_projection(
-    #         self.pair_cond_initial_norm(features_2d)
-    #     )
-    #
-    #     pair_cond += self.pair_transition_0(pair_cond)
-    #     pair_cond += self.pair_transition_1(pair_cond)
-    #     features_1d = torch.concatenate(
-    #         [single, target_feat], dim=-1)
-    #
-    #     single_cond = self.single_cond_initial_projection(
-    #         self.single_cond_initial_norm(features_1d))
-    #     return single_cond,pair_cond
     def _conditioning(
         self,
-        # token_index, residue_index, asym_id, entity_id, sym_id,
         single_cond,
         noise_level: torch.Tensor,
         # use_conditioning: bool,//always true
     ) -> tuple[torch.Tensor, torch.Tensor]:
-
 
 
         noise_embedding = self.fourier_embeddings(
@@ -191,57 +165,13 @@ class DiffusionHead(nn.Module):
         single_cond += self.single_transition_1(single_cond)
 
         return single_cond
-    # def _conditioning(
-    #     self,
-    #     # token_index, residue_index, asym_id, entity_id, sym_id,
-    #     rel_features,
-    #     # embeddings: dict[str, torch.Tensor],
-    #     single, pair, target_feat,
-    #     noise_level: torch.Tensor,
-    #     # use_conditioning: bool,//always true
-    # ) -> tuple[torch.Tensor, torch.Tensor]:
-    #
-    #
-    #     if self.single_cond==None:
-    #         features_2d = torch.concatenate([pair, rel_features], dim=-1)
-    #
-    #         pair_cond = self.pair_cond_initial_projection(
-    #             self.pair_cond_initial_norm(features_2d)
-    #         )
-    #         pair_cond += self.pair_transition_0(pair_cond)
-    #         pair_cond += self.pair_transition_1(pair_cond)
-    #
-    #         # target_feat = embeddings['target_feat']
-    #         features_1d = torch.concatenate(
-    #             [single, target_feat], dim=-1)
-    #
-    #         single_cond = self.single_cond_initial_projection(
-    #             self.single_cond_initial_norm(features_1d))
-    #         self.single_cond=single_cond.clone()
-    #         self.pair_cond=pair_cond.clone()
-    #     else:
-    #     # print(single_cond.shape,pair_cond.shape)
-    #         single_cond=self.single_cond.clone()
-    #         pair_cond=self.pair_cond.clone()
-    #
-    #
-    #     noise_embedding = self.fourier_embeddings(
-    #         (1 / 4) * torch.log(noise_level / SIGMA_DATA)
-    #     )
-    #     single_cond += self.noise_embedding_initial_projection(
-    #         self.noise_embedding_initial_norm(noise_embedding)
-    #     )
-    #
-    #     single_cond += self.single_transition_0(single_cond)
-    #     single_cond += self.single_transition_1(single_cond)
-    #
-    #     return single_cond, pair_cond
+
 
 
     def forward(
         self,
-            trunk_single_cond, trunk_pair_cond,
-        single,pair,target_feat,real_feat,
+        trunk_single_cond, trunk_pair_cond,
+        single,
 
 
         seq_mask, pred_dense_atom_mask,

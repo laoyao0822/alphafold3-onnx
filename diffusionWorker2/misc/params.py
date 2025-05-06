@@ -571,14 +571,14 @@ def PairformerBlockParams(b, with_single=False):
 
 def DiffusionHeadParams(head):
     return {
-        "pair_cond_initial_norm": LayerNormParams(head.pair_cond_initial_norm, use_bias=False),
-        "pair_cond_initial_projection": LinearParams(head.pair_cond_initial_projection),
-        **cat_params(DiffusionTransitionParams(head.pair_transition_0), "pair_transition_0ffw_"),
-        **cat_params(DiffusionTransitionParams(head.pair_transition_1), "pair_transition_1ffw_"),
-
-
-        "single_cond_initial_norm": LayerNormParams(head.single_cond_initial_norm, use_bias=False),
-        "single_cond_initial_projection": LinearParams(head.single_cond_initial_projection),
+        # "pair_cond_initial_norm": LayerNormParams(head.pair_cond_initial_norm, use_bias=False),
+        # "pair_cond_initial_projection": LinearParams(head.pair_cond_initial_projection),
+        # **cat_params(DiffusionTransitionParams(head.pair_transition_0), "pair_transition_0ffw_"),
+        # **cat_params(DiffusionTransitionParams(head.pair_transition_1), "pair_transition_1ffw_"),
+        #
+        #
+        # "single_cond_initial_norm": LayerNormParams(head.single_cond_initial_norm, use_bias=False),
+        # "single_cond_initial_projection": LinearParams(head.single_cond_initial_projection),
 
         "noise_embedding_initial_norm": LayerNormParams(head.noise_embedding_initial_norm, use_bias=False),
         "noise_embedding_initial_projection": LinearParams(head.noise_embedding_initial_projection),

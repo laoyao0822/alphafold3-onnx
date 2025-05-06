@@ -80,15 +80,6 @@ class AtomCrossAttEncoder(nn.Module):
         self.embed_ref_atom_name = nn.Linear(
             self.c_atom_name, self.per_atom_channels, bias=False)
 
-        # self.single_to_pair_cond_row = nn.Linear(
-        #     self.per_atom_channels, self.per_atom_pair_channels, bias=False)
-        # self.single_to_pair_cond_col = nn.Linear(
-        #     self.per_atom_channels, self.per_atom_pair_channels, bias=False)
-
-        # self.embed_pair_offsets = nn.Linear(
-        #     self.c_positions, self.per_atom_pair_channels, bias=False)
-        # self.embed_pair_distances = nn.Linear(
-        #     self.c_pair_distance, self.per_atom_pair_channels, bias=False)
 
         self.single_to_pair_cond_row_1 = nn.Linear(
             128, self.per_atom_pair_channels, bias=False)
@@ -137,7 +128,6 @@ class AtomCrossAttEncoder(nn.Module):
                 self.c_trunk_pair_cond, bias=False)
             self.embed_trunk_pair_cond = nn.Linear(
                 self.c_trunk_pair_cond, self.per_atom_pair_channels, bias=False)
-        self.token_atoms_single_cond=None
         self.pair_act_add=None
         self.queries_single_cond=None
         self.trunk_pair_cond_add=None
@@ -178,7 +168,6 @@ class AtomCrossAttEncoder(nn.Module):
         act += self.embed_ref_atom_name(
             atom_name_chars_1hot.reshape(num_token, num_dense, -1))
 
-        # act *= batch.ref_structure.mask[:, :, None]
         act *= ref_mask[:, :, None]
         return act
 
@@ -207,7 +196,7 @@ class AtomCrossAttEncoder(nn.Module):
         assert (trunk_single_cond is not None) == self.with_trunk_single_cond
         assert (trunk_pair_cond is not None) == self.with_trunk_pair_cond
 
-        if self.token_atoms_single_cond is None:
+        if self.queries_single_cond is None:
             token_atoms_single_cond = self._per_atom_conditioning(
                         ref_ops=ref_ops,
                         ref_mask=ref_mask,
@@ -221,10 +210,10 @@ class AtomCrossAttEncoder(nn.Module):
                 token_atoms_single_cond,
                 layout_axes=(-3, -2),
             )
-            self.queries_single_cond=queries_single_cond.clone().to(dtype=token_atoms_act.dtype).contiguous()
+            self.queries_single_cond=queries_single_cond.to(dtype=token_atoms_act.dtype).contiguous()
         else:
             # print('hit cache')
-            queries_single_cond = self.queries_single_cond.clone()
+            queries_single_cond = self.queries_single_cond.clone().contiguous()
 
         queries_mask = atom_layout.convertV2(
             acat_atoms_to_q_gather_idxs,

@@ -221,10 +221,8 @@ class diffusion():
     def _apply_denoising_step(
             self,
             trunk_single_cond, trunk_pair_cond,
-            single, pair,
-            target_feat,
+            single,
             # token_index, residue_index, asym_id, entity_id, sym_id,
-            real_feat,
             seq_mask,
             pred_dense_atom_mask,
             ref_ops, ref_mask, ref_element, ref_charge, ref_atom_name_chars, ref_space_uid,
@@ -259,11 +257,10 @@ class diffusion():
         positions_out = self.diffusion_head(
             trunk_single_cond=trunk_single_cond.clone(), trunk_pair_cond=trunk_pair_cond.clone(),
 
-            single=single, pair=pair,
-            target_feat=target_feat,
+            single=single,
+
             # token_index=token_index, residue_index=residue_index,
             # asym_id=asym_id, entity_id=entity_id, sym_id=sym_id,
-            real_feat=real_feat,
             seq_mask=seq_mask,
             pred_dense_atom_mask=pred_dense_atom_mask,
             ref_ops=ref_ops, ref_mask=ref_mask, ref_element=ref_element, ref_charge=ref_charge,
@@ -320,9 +317,7 @@ class diffusion():
 
         real_feat=real_feat.to(positions.dtype).contiguous()
         # noise_level = torch.tile(noise_levels[None, 0], (num_samples,))
-        single_c = single
-        pair_c = pair
-        target_feat_c = target_feat
+
 
         trunk_single_cond, trunk_pair_cond = self.pre_model(
 
@@ -337,9 +332,7 @@ class diffusion():
             positions = self._apply_denoising_step(
                 # single=embeddings['single'], pair=embeddings['pair'], target_feat=embeddings['target_feat'],
                 trunk_single_cond=trunk_single_cond, trunk_pair_cond=trunk_pair_cond,
-                single=single, pair=pair,
-                target_feat=target_feat_c,
-                real_feat=real_feat,
+                single=single,
                 seq_mask=seq_mask,
                 pred_dense_atom_mask=pred_dense_atom_mask,
                 ref_ops=batch.ref_structure.positions,
