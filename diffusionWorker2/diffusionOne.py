@@ -51,7 +51,7 @@ class diffusion():
         self.conversion_time=0
 
     def import_diffusion_head_params(self,model_path: pathlib.Path):
-        params.import_diffusion_head_params(self.diffusion_head,model_path)
+        params.import_diffusion_head_params(self,model_path)
 
 
     def getOnnxModel(self,batch,single, pair, target_feat,save_path,):
@@ -220,6 +220,7 @@ class diffusion():
 
     def _apply_denoising_step(
             self,
+            trunk_single_cond, trunk_pair_cond,
             single, pair,
             target_feat,
             # token_index, residue_index, asym_id, entity_id, sym_id,
@@ -254,21 +255,10 @@ class diffusion():
         positions = diffusion_head.random_augmentation(
             positions=positions, mask=pred_dense_atom_mask
         ).contiguous()
-        #step1
-        # gamma = self.gamma_0 * (noise_level > self.gamma_min)
-        # t_hat = noise_level_prev * (1 + gamma)
-        #
-        # noise_scale = self.noise_scale * \
-        #               torch.sqrt(t_hat ** 2 - noise_level_prev ** 2)
-        # noise = noise_scale * torch.randn(size=positions.shape, device=noise_scale.device)
-        # # noise = noise_scale
-        # positions_noisy = positions + noise
 
-        # print("t_hat:",t_hat.shape)
-        # print("positions_noisy:",positions_noisy.shape)
-        # positions_denoised=None
-        # print("that ",t_hat.dtype,"noise_level",noise_level.dtype)
         positions_out = self.diffusion_head(
+            trunk_single_cond=trunk_single_cond.clone(), trunk_pair_cond=trunk_pair_cond.clone(),
+
             single=single, pair=pair,
             target_feat=target_feat,
             # token_index=token_index, residue_index=residue_index,
@@ -334,18 +324,19 @@ class diffusion():
         pair_c = pair
         target_feat_c = target_feat
 
-        # single_cond,pair_cond=self.diffusion_head._get_conditioning_pair_singe(rel_features=real_feat,target_feat=target_feat
-        #                                                             ,pair=pair_c,single=single_c)
+        trunk_single_cond, trunk_pair_cond = self.pre_model(
 
-        # seq_mask = batch.token_features.mask
-        # seq_mask_attn=get_attn_mask(seq_mask,dtype=positions.dtype,device=device,
-        #                             seq_len=pred_dense_atom_mask.shape[0],batch_size=1,num_heads=16)
-
-        # print("diffusion2 start sample diffusion", positions.shape)
+            rel_features=real_feat,
+            single=single, pair=pair, target_feat=target_feat,
+            # use_conditioning=use_conditioning,
+        )
+        trunk_single_cond=trunk_single_cond.contiguous()
+        trunk_pair_cond = trunk_pair_cond.contiguous()
 
         for step_idx in range(self.diffusion_steps):
             positions = self._apply_denoising_step(
                 # single=embeddings['single'], pair=embeddings['pair'], target_feat=embeddings['target_feat'],
+                trunk_single_cond=trunk_single_cond, trunk_pair_cond=trunk_pair_cond,
                 single=single, pair=pair,
                 target_feat=target_feat_c,
                 real_feat=real_feat,
@@ -368,7 +359,6 @@ class diffusion():
                 acat_q_to_atom_gather_idxs=batch.atom_cross_att.queries_to_token_atoms.gather_idxs,
                 acat_q_to_atom_gather_mask=batch.atom_cross_att.queries_to_token_atoms.gather_mask,
                 positions=positions, noise_level_prev=noise_levels[step_idx], noise_level=noise_levels[1 + step_idx],
-
             )
         # print("transformer sum_time:",self.diffusion_head.sum_time)
             # if (step_idx % 200) == 0:

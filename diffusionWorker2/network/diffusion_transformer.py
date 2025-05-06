@@ -238,17 +238,11 @@ class DiffusionTransformer(nn.Module):
                 mask: torch.Tensor,
                 single_cond: torch.Tensor,
                 pair_cond:  torch.Tensor):
-        time1 =time.time()
-        sum_time=0
         pair_act = self.pair_input_layer_norm(pair_cond)
-        sum_time+=time.time()-time1
         for super_block_i in range(self.num_super_blocks):
-            time1 =time.time()
             pair_logits = self.pair_logits_projection[super_block_i](pair_act)
             pair_logits = einops.rearrange(
                 pair_logits, 'n s (b h) -> b h n s', h=self.num_head)
-            sum_time+=time.time()-time1
-            print('sum_time',sum_time)
             for j in range(self.super_block_size):
                 act += self.self_attention[super_block_i * self.super_block_size + j](
                     act, mask, pair_logits[j, ...], single_cond)

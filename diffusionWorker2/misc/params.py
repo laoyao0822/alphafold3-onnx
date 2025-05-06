@@ -610,7 +610,6 @@ def PreModelParams(head):
 def get_translation_dict(model):
     translations = {
         "~/diffusion_head": DiffusionHeadParams(model.diffusion_head),
-        "~/pre_model": PreModelParams(model.pre_model)
     }
 
     return translations
@@ -618,17 +617,29 @@ def get_diffusion_head_translation_dict(model):
     translations = {
         "~/diffusion_head": DiffusionHeadParams(model),
     }
-
     return translations
+
+
+def get_pre_model_translation_dict(model):
+        translations = {
+            "~/diffusion_head": PreModelParams(model),
+        }
+        return translations
 
 def import_diffusion_head_params(model, model_path: pathlib.Path):
     params = get_model_haiku_params_to_torch(model_path / "af3.bin")
-    translations = get_diffusion_head_translation_dict(model)
+    translations = get_diffusion_head_translation_dict(model.diffusion_head)
+    flat = _process_translations_dict(translations, _key_prefix="diffuser/")
+
+    assign(flat, params)
+
+    translations = get_pre_model_translation_dict(model.pre_model)
     flat = _process_translations_dict(translations, _key_prefix="diffuser/")
     assign(flat, params)
-    model.__identifier__ = params['__meta__/__identifier__']
 
-    fourier_embeddings = model.fourier_embeddings
+    # model.__identifier__ = params['__meta__/__identifier__']
+
+    fourier_embeddings = model.diffusion_head.fourier_embeddings
     # FIXME： workaround: numpy生成的傅立叶嵌入和jnp实现行为不一致，最终导致非物理结构。于是先用原版jax生成并保存为npy供torchfold3使用
     fourier_embeddings_weight = np.load(
         open("fourier_embeddings/weight.npy", "rb"))

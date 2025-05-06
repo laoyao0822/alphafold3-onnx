@@ -255,6 +255,7 @@ class ModelRunner:
             # self.diffusion.eval()
             # diffusion_params.import_jax_weights_(self.diffusion.apply_step,model_dir)
             self.diffusion.import_diffusion_head_params(model_dir)
+
         #
         # self._model = self._model.to(device=self._device)
         else:
@@ -281,6 +282,8 @@ class ModelRunner:
                 self.evoformer.evoformer = ipex.optimize(self.evoformer.evoformer,weights_prepack=False,optimize_lstm=True,auto_kernel_selection=True,dtype=torch.bfloat16)
                 # self.evoformer.evoformer = torch.compile(self.evoformer.evoformer, backend="ipex")
                 if not UseVino:
+                    self.diffusion.pre_model = ipex.optimize(self.diffusion.pre_model,weights_prepack=False,optimize_lstm=True,auto_kernel_selection=True,dtype=torch.bfloat16)
+
                     self.diffusion.diffusion_head = ipex.optimize(self.diffusion.diffusion_head,weights_prepack=False,optimize_lstm=True,auto_kernel_selection=True,dtype=torch.bfloat16)
                 # self.diffusion.diffusion_head=torch.compile(self.diffusion.diffusion_head,backend="ipex")
                 self.confidence.confidence_head=ipex.optimize(self.confidence.confidence_head,weights_prepack=False,optimize_lstm=True,auto_kernel_selection=True,dtype=torch.bfloat16)
