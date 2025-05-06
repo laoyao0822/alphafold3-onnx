@@ -216,7 +216,6 @@ class AtomCrossAttDecoder(nn.Module):
         num_token, max_atoms_per_token = acat_q_to_atom_gather_idxs.shape
             # batch.atom_cross_att.queries_to_token_atoms.shape
 
-
         # print("num_token", num_token,"max_atoms_per_token", max_atoms_per_token)
         token_atom_act = torch.broadcast_to(
             token_act[:, None, :],
@@ -253,11 +252,6 @@ class AtomCrossAttDecoder(nn.Module):
         queries_act = self.atom_features_layer_norm(queries_act)
         queries_position_update = self.atom_features_to_position_update(
             queries_act)
-        # position_update = atom_layout.convert(
-        #     batch.atom_cross_att.queries_to_token_atoms,
-        #     queries_position_update,
-        #     layout_axes=(-3, -2),
-        # )
         position_update = atom_layout.convertV2(
             # batch.atom_cross_att.queries_to_token_atoms,
             acat_q_to_atom_gather_idxs,

@@ -274,9 +274,9 @@ class EvoFormerOne():
     def __init__(self, num_recycles: int = 10, num_samples: int = 5, diffusion_steps: int = 200):
         super(EvoFormerOne, self).__init__()
 
-        # self.num_recycles = num_recycles
+        self.num_recycles = num_recycles
         # self.num_recycles = 2
-        self.num_recycles = 0
+        # self.num_recycles = 0
         self.num_samples = num_samples
 
         self.evoformer_pair_channel = 128
@@ -402,15 +402,15 @@ class EvoFormerOne():
         # batch = feat_batch.Batch.from_data_dict(batch)
         num_res = batch.num_res
         #target_feat torch.Size([37, 447])
-        target_feat = target_feat.to(dtype=torch.bfloat16).contiguous()
         # target_feat1=self.create_target_feat_embedding(batch)
         pair= torch.zeros(
                 [num_res, num_res, self.evoformer_pair_channel], device=target_feat.device,
                 dtype=torch.bfloat16,
             )
         single=torch.zeros(
-                [num_res, self.evoformer_seq_channel], dtype=torch.bfloat16, device=target_feat.device,
+                [num_res, self.evoformer_seq_channel], dtype=pair.dtype, device=target_feat.device,
             )
+        target_feat = target_feat.to(dtype=pair.dtype).contiguous()
 
         contact_matrix=preprocess.get_contact_matrix(
             gather_idxs_polymer_ligand=batch.polymer_ligand_bond_info.tokens_to_polymer_ligand_bonds.gather_idxs,
@@ -428,7 +428,7 @@ class EvoFormerOne():
         seq_mask = batch.token_features.mask
         num_tokens = seq_mask.shape[0]
 
-        template_atom_positions=batch.templates.atom_positions.to(dtype=torch.bfloat16).contiguous()
+        template_atom_positions=batch.templates.atom_positions.to(dtype=pair.dtype).contiguous()
 
         # time1=time.time()
         for _ in range(self.num_recycles + 1):

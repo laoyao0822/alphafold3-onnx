@@ -195,6 +195,7 @@ class DiffusionHead(nn.Module):
         noise_level_back=noise_level
         noise_level=t_hat
         # Get conditioning
+
         trunk_single_cond = self._conditioning(
             single_cond=trunk_single_cond,
             noise_level=noise_level,
@@ -277,7 +278,6 @@ class DiffusionHead(nn.Module):
 
         #step1
         grad = (positions - positions_denoised) / t_hat
-
         d_t = noise_level_back - t_hat
         positions_out = positions + self.step_scale * d_t * grad
 

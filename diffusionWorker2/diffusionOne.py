@@ -54,7 +54,7 @@ class diffusion():
         params.import_diffusion_head_params(self,model_path)
 
 
-    def getOnnxModel(self,batch,single, pair, target_feat,save_path,):
+    def getOnnxModel(self,batch,single, pair, target_feat,real_feat,save_path,):
         # batch = feat_batch.Batch.from_data_dict(batch)
         pred_dense_atom_mask = batch.predicted_structure_info.atom_mask
 
@@ -72,62 +72,80 @@ class diffusion():
         noise_level_prev = noise_level
         noise_level = noise_levels[1 + 1]
 
+        acat_atoms_to_q_gather_idxs = batch.atom_cross_att.token_atoms_to_queries.gather_idxs
+        acat_atoms_to_q_gather_mask = batch.atom_cross_att.token_atoms_to_queries.gather_mask
 
-        # positions = diffusion_head.random_augmentation(
-        #     positions=positions, mask=pred_dense_atom_mask
-        # )
-        # positions = positions.to(device)
-        # gamma = self.gamma_0 * (noise_level > self.gamma_min)
-        # t_hat = noise_level_prev * (1 + gamma)
-        #
-        # noise_scale = self.noise_scale * \
-        #               torch.sqrt(t_hat ** 2 - noise_level_prev ** 2)
-        # noise = noise_scale * torch.randn(size=positions.shape, device=noise_scale.device)
-        # # noise = noise_scale
-        #
-        # positions_noisy = positions + noise
-        #
-        # print("positions:",positions_noisy.shape)
-        #
-        # positions_noisy = positions_noisy
-        # noise_level = t_hat
+        queries_mask = atom_layout.convertV2(
+            acat_atoms_to_q_gather_idxs,
+            acat_atoms_to_q_gather_mask,
+            pred_dense_atom_mask,
+            layout_axes=(-2, -1),
+        ).contiguous()
 
-        seq_len = torch.export.Dim('seq_len', min=10, max=1600)
-        edge_number = torch.export.Dim('edge_number', min=10, max=1500)
+        target_feat = target_feat.to(dtype=positions.dtype)
+
+        real_feat = real_feat.to(positions.dtype).contiguous()
+        # noise_level = torch.tile(noise_levels[None, 0], (num_samples,))
+
+        (trunk_single_cond, trunk_pair_cond, queries_single_cond,
+         pair_act, keys_mask, keys_single_cond, pair_logits_cat) = self.pre_model(
+            rel_features=real_feat,
+            single=single, pair=pair, target_feat=target_feat,
+
+            ref_ops=batch.ref_structure.positions,
+            ref_mask=batch.ref_structure.mask,
+            ref_element=batch.ref_structure.element,
+            ref_charge=batch.ref_structure.charge,
+            ref_atom_name_chars=batch.ref_structure.atom_name_chars,
+            ref_space_uid=batch.ref_structure.ref_space_uid,
+
+            queries_mask=queries_mask,
+
+            acat_atoms_to_q_gather_idxs=acat_atoms_to_q_gather_idxs,
+            acat_atoms_to_q_gather_mask=acat_atoms_to_q_gather_mask,
+            acat_t_to_q_gather_idxs=batch.atom_cross_att.tokens_to_queries.gather_idxs,
+            acat_t_to_q_gather_mask=batch.atom_cross_att.tokens_to_queries.gather_mask,
+
+            acat_q_to_k_gather_idxs=batch.atom_cross_att.queries_to_keys.gather_idxs,
+            acat_q_to_k_gather_mask=batch.atom_cross_att.queries_to_keys.gather_mask,
+
+            acat_t_to_k_gather_idxs=batch.atom_cross_att.tokens_to_keys.gather_idxs,
+            acat_t_to_k_gather_mask=batch.atom_cross_att.tokens_to_keys.gather_mask,
+            # use_conditioning=use_conditioning,
+        )
+
+        positions = diffusion_head.random_augmentation(
+            positions=positions, mask=pred_dense_atom_mask
+        ).contiguous()
+
+
+
+        seq_len = torch.export.Dim('seq_len', min=10, max=10000)
+        edge_number = torch.export.Dim('edge_number', min=10, max=10000)
         ordered_keys = [
-            'single', 'pair', 'target_feat',
-            'token_index', 'residue_index', 'asym_id', 'entity_id', 'sym_id',
+            'queries_single_cond', 'pair_act', 'keys_mask',
+            'keys_single_cond', 'trunk_single_cond', 'pair_logits_cat',
             'seq_mask','pred_dense_atom_mask',
-            'ref_ops', 'ref_mask', 'ref_element', 'ref_charge', 'ref_atom_name_chars', 'ref_space_uid',
+            'queries_mask',
             'acat_atoms_to_q_gather_idxs', 'acat_atoms_to_q_gather_mask',
             'acat_q_to_k_gather_idxs', 'acat_q_to_k_gather_mask',
-            'acat_t_to_q_gather_idxs', 'acat_t_to_q_gather_mask',
             'acat_q_to_atom_gather_idxs', 'acat_q_to_atom_gather_mask',
-            'acat_t_to_k_gather_idxs', 'acat_t_to_k_gather_mask',
             'positions','noise_level_prev','noise_level'
         ]
-        output_names = ["positions_denoised"]
+        output_names = ["positions_out"]
 
         kwarg_inputs = {
-            'single': single,
-            'pair': pair,
-            'target_feat': target_feat,
-
-            'token_index': batch.token_features.token_index,
-            'residue_index': batch.token_features.residue_index,
-            'asym_id': batch.token_features.asym_id,
-            'entity_id': batch.token_features.entity_id,
-            'sym_id': batch.token_features.sym_id,
+            'queries_single_cond': queries_single_cond,
+            'pair_act': pair_act,
+            'keys_mask': keys_mask,
+            'keys_single_cond': keys_single_cond,
+            'trunk_single_cond': trunk_single_cond,
+            'pair_logits_cat': pair_logits_cat,
 
             'seq_mask': batch.token_features.mask,
             'pred_dense_atom_mask': batch.predicted_structure_info.atom_mask,
 
-            'ref_ops': batch.ref_structure.positions,
-            'ref_mask': batch.ref_structure.mask,
-            'ref_element': batch.ref_structure.element,
-            'ref_charge': batch.ref_structure.charge,
-            'ref_atom_name_chars': batch.ref_structure.atom_name_chars,
-            'ref_space_uid': batch.ref_structure.ref_space_uid,
+            'queries_mask': queries_mask,
 
             'acat_atoms_to_q_gather_idxs': batch.atom_cross_att.token_atoms_to_queries.gather_idxs,
             'acat_atoms_to_q_gather_mask': batch.atom_cross_att.token_atoms_to_queries.gather_mask,
@@ -135,14 +153,8 @@ class diffusion():
             'acat_q_to_k_gather_idxs': batch.atom_cross_att.queries_to_keys.gather_idxs,
             'acat_q_to_k_gather_mask': batch.atom_cross_att.queries_to_keys.gather_mask,
 
-            'acat_t_to_q_gather_idxs': batch.atom_cross_att.tokens_to_queries.gather_idxs,
-            'acat_t_to_q_gather_mask': batch.atom_cross_att.tokens_to_queries.gather_mask,
-
             'acat_q_to_atom_gather_idxs': batch.atom_cross_att.queries_to_token_atoms.gather_idxs,
             'acat_q_to_atom_gather_mask': batch.atom_cross_att.queries_to_token_atoms.gather_mask,
-
-            'acat_t_to_k_gather_idxs': batch.atom_cross_att.tokens_to_keys.gather_idxs,
-            'acat_t_to_k_gather_mask': batch.atom_cross_att.tokens_to_keys.gather_mask,
 
             'positions': positions,
             'noise_level_prev':noise_level_prev,
@@ -166,21 +178,17 @@ class diffusion():
                           opset_version=opset_version,
                           dynamo=True,
                           export_params=True,
-
                           dynamic_shapes={
-                              # 一维序列数据
-                              'single': {0: seq_len},
-                              'pair': {0: seq_len, 1: seq_len},
-                              'target_feat': {0: seq_len},
-
-                              'token_index': {0: seq_len},
-                              'residue_index': {0: seq_len},
-                              'asym_id': {0: seq_len},
-                              'entity_id': {0: seq_len},
-                              'sym_id': {0: seq_len},
+                              'queries_single_cond': {0:edge_number},
+                              'pair_act': {0:edge_number},
+                              'keys_mask': {0:edge_number},
+                              'keys_single_cond': {0:edge_number},
+                              'trunk_single_cond': {0:seq_len},
+                              'pair_logits_cat': {3:seq_len,4:seq_len},
 
                               'seq_mask': {0: seq_len},
                               'pred_dense_atom_mask': {0: seq_len},
+                              'queries_mask': {0: edge_number},
 
                               # 图谱注意力相关
                               'acat_atoms_to_q_gather_idxs': {0: edge_number},
@@ -189,33 +197,21 @@ class diffusion():
                               'acat_q_to_k_gather_idxs': {0: edge_number},
                               'acat_q_to_k_gather_mask': {0: edge_number},
 
-                              'acat_t_to_q_gather_idxs': {0: edge_number},
-                              'acat_t_to_q_gather_mask': {0: edge_number},
-
                               'acat_q_to_atom_gather_idxs': {0: seq_len},
                               'acat_q_to_atom_gather_mask': {0: seq_len},
 
-                              'acat_t_to_k_gather_idxs': {0: edge_number},
-                              'acat_t_to_k_gather_mask': {0: edge_number},
-
                               # 参考结构
-                              'ref_ops': {0: seq_len},
-                              'ref_mask': {0: seq_len},
-                              'ref_element': {0: seq_len},
-                              'ref_charge': {0: seq_len},
-                              'ref_atom_name_chars': {0: seq_len},
-                              'ref_space_uid': {0: seq_len},
 
                               'positions': {0: seq_len},
                               # 'positions_noisy':{0:seq_len},
                               'noise_level_prev':{},
                               'noise_level':{}
                           },
-                          training=torch.onnx.TrainingMode.EVAL
+                          # training=torch.onnx.TrainingMode.EVAL
                           # dynamic_axes={'input': {}, 'output': {}},dynamo=True
                           )
-        # print("save onnx done:", save_path)
-        # exit(0)
+        print("save onnx done:", save_path)
+        exit(0)
 
 
     def _apply_denoising_step(
@@ -346,13 +342,20 @@ class diffusion():
             acat_t_to_k_gather_mask=batch.atom_cross_att.tokens_to_keys.gather_mask,
             # use_conditioning=use_conditioning,
         )
-        trunk_single_cond=trunk_single_cond.contiguous()
-        trunk_pair_cond = trunk_pair_cond.contiguous()
+        print('trunk_single_cond:', trunk_single_cond.shape)
+        print('queries_single_cond:', queries_single_cond.shape)
+        print('pair_cat', pair_act.shape, pair_act.dtype)
+        print('keys_mask', keys_mask.shape,keys_mask.dtype)
+        print('pair_logits_cat:', pair_logits_cat.shape)
+        print('keys_single_cond:', keys_single_cond.shape)
+        print('qqueries_mask',queries_mask.shape,queries_mask.dtype)
+
+        trunk_single_cond=trunk_single_cond.to(dtype=positions.dtype).contiguous()
         queries_single_cond=queries_single_cond.to(dtype=positions.dtype).contiguous()
-        pair_act=pair_act.contiguous()
+        pair_act=pair_act.to(dtype=positions.dtype).contiguous()
         keys_mask=keys_mask.contiguous()
-        keys_single_cond=keys_single_cond.contiguous()
-        pair_logits_cat=pair_logits_cat.contiguous()
+        keys_single_cond=keys_single_cond.to(dtype=positions.dtype).contiguous()
+        pair_logits_cat=pair_logits_cat.to(dtype=positions.dtype).contiguous()
 
         for step_idx in range(self.diffusion_steps):
             positions = self._apply_denoising_step(
@@ -432,21 +435,8 @@ class diffusion2():
             'pair': pair,
             'target_feat': target_feat,
 
-            'token_index': batch.token_features.token_index,
-            'residue_index': batch.token_features.residue_index,
-            'asym_id': batch.token_features.asym_id,
-            'entity_id': batch.token_features.entity_id,
-            'sym_id': batch.token_features.sym_id,
-
             'seq_mask': batch.token_features.mask,
             'pred_dense_atom_mask': batch.predicted_structure_info.atom_mask,
-
-            'ref_ops': batch.ref_structure.positions,
-            'ref_mask': batch.ref_structure.mask,
-            'ref_element': batch.ref_structure.element,
-            'ref_charge': batch.ref_structure.charge,
-            'ref_atom_name_chars': batch.ref_structure.atom_name_chars,
-            'ref_space_uid': batch.ref_structure.ref_space_uid,
 
             'acat_atoms_to_q_gather_idxs': batch.atom_cross_att.token_atoms_to_queries.gather_idxs,
             'acat_atoms_to_q_gather_mask': batch.atom_cross_att.token_atoms_to_queries.gather_mask,
@@ -492,12 +482,6 @@ class diffusion2():
                               'pair': {0: seq_len, 1: seq_len},
                               'target_feat': {0: seq_len},
 
-                              'token_index': {0: seq_len},
-                              'residue_index': {0: seq_len},
-                              'asym_id': {0: seq_len},
-                              'entity_id': {0: seq_len},
-                              'sym_id': {0: seq_len},
-
                               'seq_mask': {0: seq_len},
                               'pred_dense_atom_mask': {0: seq_len},
 
@@ -517,13 +501,7 @@ class diffusion2():
                               'acat_t_to_k_gather_idxs': {0: edge_number},
                               'acat_t_to_k_gather_mask': {0: edge_number},
 
-                              # 参考结构
-                              'ref_ops': {0: seq_len},
-                              'ref_mask': {0: seq_len},
-                              'ref_element': {0: seq_len},
-                              'ref_charge': {0: seq_len},
-                              'ref_atom_name_chars': {0: seq_len},
-                              'ref_space_uid': {0: seq_len},
+
 
                               'positions': {0: seq_len},
                               'noise_level_prev':{},

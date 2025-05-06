@@ -656,6 +656,13 @@ def get_pre_model_translation_dict(model):
         }
         return translations
 
+def import_pre_model_params(model, model_path: pathlib.Path):
+    params = get_model_haiku_params_to_torch(model_path / "af3.bin")
+
+    translations = get_pre_model_translation_dict(model.pre_model)
+    flat = _process_translations_dict(translations, _key_prefix="diffuser/")
+    assign(flat, params)
+
 def import_diffusion_head_params(model, model_path: pathlib.Path):
     params = get_model_haiku_params_to_torch(model_path / "af3.bin")
     translations = get_diffusion_head_translation_dict(model.diffusion_head)

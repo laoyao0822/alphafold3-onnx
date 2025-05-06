@@ -55,19 +55,19 @@ from evoformer import preprocess
 
 DIFFUSION_ONNX=False
 SAVE_ONNX=False
-UseVino=False
+UseVino=True
 SAVE_EVO_ONNX=False
 USE_EVO_VINO= False
 SAVE_CONFIDENCE_ONNX=False
-USE_IPEX=True
+USE_IPEX=False
 _HOME_DIR = pathlib.Path(os.environ.get('HOME'))
 DEFAULT_MODEL_DIR = _HOME_DIR / 'models/model_103275239_1'
 DEFAULT_DB_DIR = _HOME_DIR / 'public_databases'
-ONNX_PATH = '/root/pycharm/diffusion_head_onnx/diffusion_head.onnx'
+ONNX_PATH = '/root/pycharm/diffusion_head_onnx_2/diffusion_head.onnx'
 EVO_ONNX_PATH = '/root/pycharm/evo_onnx/evoformer.onnx'
 EVO_VINO_PATH='/root/pycharm/evo_vino/model.xml'
 # ONNX_PATH='/root/pycharm/diffusion_head_onnx_base_fp16/diffusion_head.onnx'
-OPENVINO_PATH = '/root/pycharm/diffusion_head_openvino/model.xml'
+OPENVINO_PATH = '/root/pycharm/diffusion_head_openvino_2/model.xml'
 
 # Input and output paths.
 _JSON_PATH = flags.DEFINE_string(
@@ -246,6 +246,7 @@ class ModelRunner:
             # self.diffusion=diffusion()
             self.diffusion=diffusion_vino()
             self.diffusion.initOpenvinoModel(OPENVINO_PATH)
+
             # self.diffusion.initOnnxModel(ONNX_PATH)
         elif SAVE_ONNX or not DIFFUSION_ONNX:
             print("select diffusion2")
@@ -334,7 +335,7 @@ class ModelRunner:
 
         else: # CPU Inference
             if _CPU_AMP_OPT:
-                with torch.amp.autocast("cpu", dtype=torch.bfloat16):
+                # with torch.amp.autocast("cpu", dtype=torch.bfloat16):
                     print("Running inference with AMP on CPU...")
                     # self._model=torch.jit.trace(self._model,featurised_example)
                     # result = self._model(featurised_example)
@@ -424,7 +425,7 @@ class ModelRunner:
                     if SAVE_ONNX:
                         self.diffusion.getOnnxModel(batch=batch,
                                             single=embeddings['single'], pair=embeddings['pair'],
-                                            target_feat=target_feat,
+                                            target_feat=target_feat,real_feat=rel_feat,
                                             save_path=ONNX_PATH)
 
 
