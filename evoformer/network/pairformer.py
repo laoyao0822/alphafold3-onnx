@@ -112,8 +112,8 @@ class PairformerBlock(nn.Module):
                                              pair_logits=pair_logits)
 
             single += self.single_transition(single)
-            return pair, single
-        return pair
+            return pair.contiguous(), single.contiguous()
+        return pair.contiguous()
 
 
 class EvoformerBlock(nn.Module):
@@ -158,4 +158,4 @@ class EvoformerBlock(nn.Module):
         # print("evoformer end-------------")
         pair += self.pair_transition(pair)
 
-        return msa, pair
+        return msa.contiguous(), pair.contiguous()

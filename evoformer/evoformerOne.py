@@ -179,12 +179,12 @@ class Evoformer(nn.Module):
         dtype = pair_activations.dtype
         rows, mask, deletion_matrix= featurization.shuffle_msa_runcate(rows, mask, deletion_matrix,num_msa=self.num_msa)
 
-        msa_mask = mask.to(dtype=dtype)
+        msa_mask = mask.to(dtype=dtype).contiguous()
         # time1 = time.time()
-        msa_feat = self.create_msa_feat(rows,deletion_matrix).to(dtype=dtype)
+        msa_feat = self.create_msa_feat(rows,deletion_matrix).to(dtype=dtype).contiguous()
         # print("created msa feat:", time.time() - time1)
-        msa_activations = self.msa_activations(msa_feat)
-        msa_activations += self.extra_msa_target_feat(target_feat)[None]
+        msa_activations = self.msa_activations(msa_feat).contiguous()
+        msa_activations += self.extra_msa_target_feat(target_feat)[None].contiguous()
 
 
         # Evoformer MSA stack.
