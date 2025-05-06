@@ -274,9 +274,9 @@ class EvoFormerOne():
     def __init__(self, num_recycles: int = 10, num_samples: int = 5, diffusion_steps: int = 200):
         super(EvoFormerOne, self).__init__()
 
-        # self.num_recycles = num_recycles
+        self.num_recycles = num_recycles
         # self.num_recycles = 2
-        self.num_recycles = 0
+        # self.num_recycles = 0
         self.num_samples = num_samples
 
         self.evoformer_pair_channel = 128
