@@ -2,8 +2,9 @@ import torch
 import torch.nn as nn
 from torch.nn import LayerNorm
 
-from diffusionWorker2.network.diffusion_transformer import DiffusionTransformer, DiffusionTransition
+from diffusionWorker2.network.diffusion_transformer import  DiffusionTransition
 from diffusionWorker2.premodel.pre_ac_encoder import AtomCrossAttEncoder
+from diffusionWorker2.premodel.pre_diffusionTransformer import DiffusionTransformer
 
 class DiffusionHead(nn.Module):
     def __init__(self):
@@ -33,6 +34,7 @@ class DiffusionHead(nn.Module):
             self.c_single_cond_initial, bias=False)
 
         self.atom_cross_att_encoder = AtomCrossAttEncoder()
+        self.transformer = DiffusionTransformer()
 
 
     def _conditioning(
@@ -74,7 +76,8 @@ class DiffusionHead(nn.Module):
                 acat_t_to_k_gather_mask,
                 ):
         pair_cond,single_cond = self._conditioning(rel_features,single,pair,target_feat)
-
+        pair_logits_cat=self.transformer(pair_cond)
+        print('pair_logits_cat', pair_logits_cat.shape)
         queries_single_cond,pair_act,keys_mask,keys_single_cond=self.atom_cross_att_encoder(
             trunk_single_cond=single,trunk_pair_cond=pair_cond.clone(),
             ref_ops=ref_ops, ref_mask=ref_mask, ref_element=ref_element, ref_charge=ref_charge,
@@ -93,4 +96,4 @@ class DiffusionHead(nn.Module):
             acat_t_to_k_gather_idxs=acat_t_to_k_gather_idxs,
             acat_t_to_k_gather_mask=acat_t_to_k_gather_mask,
           )
-        return  single_cond,pair_cond,queries_single_cond,pair_act,keys_mask,keys_single_cond
+        return  single_cond,pair_cond,queries_single_cond,pair_act,keys_mask,keys_single_cond,pair_logits_cat

@@ -202,7 +202,7 @@ class SelfAttention(nn.Module):
         weighted_avg *= torch.sigmoid(gate_logits)
 
         return self.adaptive_zero_init(weighted_avg, single_cond)
-import time
+# import time
 
 class DiffusionTransformer(nn.Module):
     def __init__(self,

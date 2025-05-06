@@ -175,8 +175,6 @@ class DiffusionHead(nn.Module):
 
         acat_q_to_atom_gather_idxs,
         acat_q_to_atom_gather_mask,
-
-
         positions,
         noise_level_prev,
         noise_level,
@@ -208,7 +206,7 @@ class DiffusionHead(nn.Module):
 
         act=act.to(dtype=positions.dtype).contiguous()
 
-        enc = self.atom_cross_att_encoder(
+        act, skip_connection= self.atom_cross_att_encoder(
             queries_mask=queries_mask,
             pred_dense_atom_mask=pred_dense_atom_mask,
             # batch=batch,
@@ -227,7 +225,7 @@ class DiffusionHead(nn.Module):
             pair_act=pair_act, keys_mask=keys_mask,
             keys_single_cond=keys_single_cond
         )
-        act = enc.token_act
+        # act = enc.token_act
 
         act += self.single_cond_embedding_projection(
             self.single_cond_embedding_norm(trunk_single_cond)
@@ -254,7 +252,13 @@ class DiffusionHead(nn.Module):
             acat_q_to_atom_gather_mask=acat_q_to_atom_gather_mask,
             # batch=batch,
             token_act=act,
-            enc=enc,
+            skip_connection=skip_connection,
+            keys_mask=keys_mask,
+            queries_mask=queries_mask,
+            queries_single_cond=queries_single_cond,
+            keys_single_cond=keys_single_cond,
+            pair_cond=pair_act,
+            # enc=enc,
         )
 
         skip_scaling = SIGMA_DATA**2 / (noise_level**2 + SIGMA_DATA**2)

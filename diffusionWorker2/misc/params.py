@@ -549,7 +549,14 @@ def PairformerBlockParams(b, with_single=False):
     }
 
     return d
+def Pre_DiffusionTransformerParams(transformer):
 
+
+    return {
+        "pair_input_layer_norm": LayerNormParams(transformer.pair_input_layer_norm, use_bias=False),
+        "__layer_stack_with_per_layer/pair_logits_projection": stacked(
+            [LinearHMAParams(l) for l in transformer.pair_logits_projection]),
+    }
 
 def pre_AcEncoderParams(encoder,
                               with_token_atoms_act=False,
@@ -626,6 +633,8 @@ def PreModelParams(head):
                                                with_trunk_pair_cond=True,
                                                with_trunk_single_cond=True,
                                                prefix="diffusion_atom_transformer_encoder"), "diffusion_"),
+        "transformer": Pre_DiffusionTransformerParams(head.transformer),
+
     }
 
 def get_translation_dict(model):
