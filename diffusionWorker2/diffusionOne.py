@@ -221,7 +221,7 @@ class diffusion():
     def _apply_denoising_step(
             self,
             queries_single_cond,
-            trunk_single_cond, trunk_pair_cond,
+            trunk_single_cond, pair_logits_cat,
 
             pair_act, keys_mask, keys_single_cond,
 
@@ -241,8 +241,6 @@ class diffusion():
             acat_q_to_atom_gather_idxs,
             acat_q_to_atom_gather_mask,
 
-            # batch: feat_batch.Batch,
-            # embeddings: dict[str, torch.Tensor],
             positions: torch.Tensor,
             noise_level_prev: torch.Tensor,
             # mask: torch.Tensor,
@@ -259,7 +257,7 @@ class diffusion():
             queries_single_cond=queries_single_cond.clone(),
             pair_act=pair_act.clone(), keys_mask=keys_mask, keys_single_cond=keys_single_cond.clone(),
 
-            trunk_single_cond=trunk_single_cond.clone(), trunk_pair_cond=trunk_pair_cond.clone(),
+            trunk_single_cond=trunk_single_cond.clone(), pair_logits_cat=pair_logits_cat,
 
             seq_mask=seq_mask,
             pred_dense_atom_mask=pred_dense_atom_mask,
@@ -354,13 +352,14 @@ class diffusion():
         pair_act=pair_act.contiguous()
         keys_mask=keys_mask.contiguous()
         keys_single_cond=keys_single_cond.contiguous()
+        pair_logits_cat=pair_logits_cat.contiguous()
 
         for step_idx in range(self.diffusion_steps):
             positions = self._apply_denoising_step(
                 queries_single_cond=queries_single_cond,
                 pair_act=pair_act,keys_mask=keys_mask,keys_single_cond=keys_single_cond,
                 # single=embeddings['single'], pair=embeddings['pair'], target_feat=embeddings['target_feat'],
-                trunk_single_cond=trunk_single_cond, trunk_pair_cond=trunk_pair_cond,
+                trunk_single_cond=trunk_single_cond, pair_logits_cat=pair_logits_cat,
                 seq_mask=seq_mask,
                 pred_dense_atom_mask=pred_dense_atom_mask,
 

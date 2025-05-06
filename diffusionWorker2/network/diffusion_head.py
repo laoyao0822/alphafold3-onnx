@@ -163,7 +163,7 @@ class DiffusionHead(nn.Module):
         self,
         queries_single_cond,
         pair_act, keys_mask, keys_single_cond,
-        trunk_single_cond, trunk_pair_cond,
+        trunk_single_cond,pair_logits_cat,
         # single,
 
         seq_mask, pred_dense_atom_mask,
@@ -235,7 +235,8 @@ class DiffusionHead(nn.Module):
             act=act,
             single_cond=trunk_single_cond,
             mask=seq_mask,
-            pair_cond=trunk_pair_cond,
+            # pair_cond=trunk_pair_cond,
+            pair_logits_cat=pair_logits_cat,
         )
         # self.sum_time+=time.time()-time1
         # print(time.time() - time1)

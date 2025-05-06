@@ -77,7 +77,7 @@ class DiffusionHead(nn.Module):
                 ):
         pair_cond,single_cond = self._conditioning(rel_features,single,pair,target_feat)
         pair_logits_cat=self.transformer(pair_cond)
-        print('pair_logits_cat', pair_logits_cat.shape)
+        # print('pair_logits_cat', pair_logits_cat.shape)
         queries_single_cond,pair_act,keys_mask,keys_single_cond=self.atom_cross_att_encoder(
             trunk_single_cond=single,trunk_pair_cond=pair_cond.clone(),
             ref_ops=ref_ops, ref_mask=ref_mask, ref_element=ref_element, ref_charge=ref_charge,

@@ -36,8 +36,8 @@ class DiffusionTransformer(nn.Module):
         for super_block_i in range(self.num_super_blocks):
             pair_logits = self.pair_logits_projection[super_block_i](pair_act)
             pair_logits = einops.rearrange(
-                pair_logits, 'n s (b h) -> b h n s', h=self.num_head).unsqueeze(0)
-            print(pair_logits.shape)
+                pair_logits, 'n s (b h) -> b h n s', h=self.num_head)
+            # print(pair_logits.shape)
             pair_logits_cat.append(pair_logits)
 
-        return torch.stack(pair_logits_cat).contiguous()
+        return torch.stack(pair_logits_cat)
