@@ -492,23 +492,12 @@ def AtomCrossAttEncoderParams(encoder,
                               with_trunk_pair_cond=False,
                               prefix="evoformer_conditioning_atom_transformer_encoder"):
     d = {
-        "embed_ref_pos": LinearParams(encoder.embed_ref_pos),
-        "embed_ref_mask": LinearParams(encoder.embed_ref_mask),
-        "embed_ref_element": LinearParams(encoder.embed_ref_element),
-        "embed_ref_charge": LinearParams(encoder.embed_ref_charge),
-        "embed_ref_atom_name": LinearParams(encoder.embed_ref_atom_name),
+
         # "single_to_pair_cond_row": LinearParams(encoder.single_to_pair_cond_row),
         # "single_to_pair_cond_col": LinearParams(encoder.single_to_pair_cond_col),
         # "embed_pair_offsets": LinearParams(encoder.embed_pair_offsets),
         # "embed_pair_distances": LinearParams(encoder.embed_pair_distances),
-        "single_to_pair_cond_row_1": LinearParams(encoder.single_to_pair_cond_row_1),
-        "single_to_pair_cond_col_1": LinearParams(encoder.single_to_pair_cond_col_1),
-        "embed_pair_offsets_1": LinearParams(encoder.embed_pair_offsets_1),
-        "embed_pair_distances_1": LinearParams(encoder.embed_pair_distances_1),
-        "embed_pair_offsets_valid": LinearParams(encoder.embed_pair_offsets_valid),
-        "pair_mlp_1": LinearParams(encoder.pair_mlp_1),
-        "pair_mlp_2": LinearParams(encoder.pair_mlp_2),
-        "pair_mlp_3": LinearParams(encoder.pair_mlp_3),
+
         "atom_transformer_encoder": DiffusionCrossAttTransformerParams(encoder.atom_transformer_encoder, prefix=prefix),
         "project_atom_features_for_aggr": LinearParams(encoder.project_atom_features_for_aggr),
     }
@@ -518,17 +507,13 @@ def AtomCrossAttEncoderParams(encoder,
             "atom_positions_to_features": LinearParams(encoder.atom_positions_to_features),
         })
 
-    if with_trunk_single_cond is True:
-        d.update({
-            "lnorm_trunk_single_cond": LayerNormParams(encoder.lnorm_trunk_single_cond, use_bias=False),
-            "embed_trunk_single_cond": LinearParams(encoder.embed_trunk_single_cond),
-        })
 
-    if with_trunk_pair_cond:
-        d.update({
-            "lnorm_trunk_pair_cond": LayerNormParams(encoder.lnorm_trunk_pair_cond, use_bias=False),
-            "embed_trunk_pair_cond": LinearParams(encoder.embed_trunk_pair_cond),
-        })
+
+    # if with_trunk_pair_cond:
+    #     d.update({
+    #         "lnorm_trunk_pair_cond": LayerNormParams(encoder.lnorm_trunk_pair_cond, use_bias=False),
+    #         "embed_trunk_pair_cond": LinearParams(encoder.embed_trunk_pair_cond),
+    #     })
 
     return d
 
@@ -577,7 +562,25 @@ def pre_AcEncoderParams(encoder,
         "embed_ref_element": LinearParams(encoder.embed_ref_element),
         "embed_ref_charge": LinearParams(encoder.embed_ref_charge),
         "embed_ref_atom_name": LinearParams(encoder.embed_ref_atom_name),
+        "single_to_pair_cond_row_1": LinearParams(encoder.single_to_pair_cond_row_1),
+        "single_to_pair_cond_col_1": LinearParams(encoder.single_to_pair_cond_col_1),
+        "embed_pair_offsets_1": LinearParams(encoder.embed_pair_offsets_1),
+        "embed_pair_distances_1": LinearParams(encoder.embed_pair_distances_1),
+        "embed_pair_offsets_valid": LinearParams(encoder.embed_pair_offsets_valid),
+        "pair_mlp_1": LinearParams(encoder.pair_mlp_1),
+        "pair_mlp_2": LinearParams(encoder.pair_mlp_2),
+        "pair_mlp_3": LinearParams(encoder.pair_mlp_3),
     }
+    if with_trunk_single_cond is True:
+        d.update({
+            "lnorm_trunk_single_cond": LayerNormParams(encoder.lnorm_trunk_single_cond, use_bias=False),
+            "embed_trunk_single_cond": LinearParams(encoder.embed_trunk_single_cond),
+        })
+    if with_trunk_pair_cond:
+        d.update({
+            "lnorm_trunk_pair_cond": LayerNormParams(encoder.lnorm_trunk_pair_cond, use_bias=False),
+            "embed_trunk_pair_cond": LinearParams(encoder.embed_trunk_pair_cond),
+        })
 
 
     return d

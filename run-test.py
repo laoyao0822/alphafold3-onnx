@@ -371,16 +371,7 @@ class ModelRunner:
                         ref_space_uid=batch.ref_structure.ref_space_uid
                     ).contiguous()
 
-                    queries_single_cond=self.diffusion.pre_model(ref_ops=batch.ref_structure.positions,
-                        ref_mask=batch.ref_structure.mask,
-                        ref_element=batch.ref_structure.element,
-                        ref_charge=batch.ref_structure.charge,
-                        ref_atom_name_chars=batch.ref_structure.atom_name_chars,
-                        ref_space_uid=batch.ref_structure.ref_space_uid,
-                        acat_atoms_to_q_gather_idxs=batch.atom_cross_att.token_atoms_to_queries.gather_idxs,
-                        acat_atoms_to_q_gather_mask=batch.atom_cross_att.token_atoms_to_queries.gather_mask,
-                        beforeEVO=True,
-                        )
+
 
 
 
@@ -449,7 +440,7 @@ class ModelRunner:
                             # with profile(activities=[ProfilerActivity.CPU],
                             # profile_memory=False, record_shapes=False) as prof:
                             positions[i] = self.diffusion.forward(batch,single=embeddings['single'], pair=embeddings['pair'],
-                                                      target_feat=target_feat,real_feat=rel_feat,queries_single_cond=queries_single_cond,seq_mask=seq_mask,
+                                                      target_feat=target_feat,real_feat=rel_feat,seq_mask=seq_mask,
                                                       )
                             # print(prof.key_averages().table(sort_by="cpu_time_total", row_limit=500))
                             # exit(0)

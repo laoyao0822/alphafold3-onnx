@@ -98,14 +98,8 @@ class DiffusionHead(nn.Module):
         self.c_act = 768
         self.pair_channel = 128
         self.seq_channel = 384
-
         self.c_pair_cond_initial = 267
-
-
-
-
         self.c_single_cond_initial = 831
-
 
         self.c_noise_embedding = 256
         self.noise_embedding_initial_norm = LayerNorm(
@@ -167,25 +161,21 @@ class DiffusionHead(nn.Module):
 
     def forward(
         self,
-            queries_single_cond,
-
-            trunk_single_cond, trunk_pair_cond,
-        single,
-
+        queries_single_cond,
+        pair_act, keys_mask, keys_single_cond,
+        trunk_single_cond, trunk_pair_cond,
+        # single,
 
         seq_mask, pred_dense_atom_mask,
-        ref_ops, ref_mask, ref_element, ref_charge, ref_atom_name_chars, ref_space_uid,
-
+        queries_mask,
         acat_atoms_to_q_gather_idxs,
         acat_atoms_to_q_gather_mask,
         acat_q_to_k_gather_idxs,
         acat_q_to_k_gather_mask,
-        acat_t_to_q_gather_idxs,
-        acat_t_to_q_gather_mask,
+
         acat_q_to_atom_gather_idxs,
         acat_q_to_atom_gather_mask,
-        acat_t_to_k_gather_idxs,
-        acat_t_to_k_gather_mask,
+
 
         positions,
         noise_level_prev,
@@ -219,9 +209,7 @@ class DiffusionHead(nn.Module):
         act=act.to(dtype=positions.dtype).contiguous()
 
         enc = self.atom_cross_att_encoder(
-
-            ref_ops=ref_ops, ref_mask=ref_mask, ref_element=ref_element, ref_charge=ref_charge,
-            ref_atom_name_chars=ref_atom_name_chars, ref_space_uid=ref_space_uid,
+            queries_mask=queries_mask,
             pred_dense_atom_mask=pred_dense_atom_mask,
             # batch=batch,
 
@@ -229,19 +217,15 @@ class DiffusionHead(nn.Module):
             acat_atoms_to_q_gather_mask=acat_atoms_to_q_gather_mask,
             acat_q_to_k_gather_idxs=acat_q_to_k_gather_idxs,
             acat_q_to_k_gather_mask=acat_q_to_k_gather_mask,
-            acat_t_to_q_gather_idxs=acat_t_to_q_gather_idxs,
-            acat_t_to_q_gather_mask=acat_t_to_q_gather_mask,
+
             acat_q_to_atom_gather_idxs=acat_q_to_atom_gather_idxs,
             acat_q_to_atom_gather_mask=acat_q_to_atom_gather_mask,
-            acat_t_to_k_gather_idxs=acat_t_to_k_gather_idxs,
-            acat_t_to_k_gather_mask=acat_t_to_k_gather_mask,
 
             token_atoms_act=act,
-            # trunk_single_cond=embeddings['single'],
-            trunk_single_cond=single,
-            trunk_pair_cond=trunk_pair_cond,
-            queries_single_cond=queries_single_cond,
 
+            queries_single_cond=queries_single_cond,
+            pair_act=pair_act, keys_mask=keys_mask,
+            keys_single_cond=keys_single_cond
         )
         act = enc.token_act
 
