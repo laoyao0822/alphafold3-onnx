@@ -73,10 +73,8 @@ class PairformerBlock(nn.Module):
     def forward(
         self,
         pair: torch.Tensor,
-        pair_mask: Optional[torch.Tensor] = None,
         single: Optional[torch.Tensor] = None,
         seq_mask: Optional[torch.Tensor] = None,
-        pair_mask_attn: Optional[torch.Tensor] = None,
     ) :
         """
         Forward pass of the PairformerBlock.
@@ -90,25 +88,19 @@ class PairformerBlock(nn.Module):
         Returns:
             tuple[torch.Tensor, Optional[torch.Tensor]]: pair, single
         """
-        pair += self.triangle_multiplication_outgoing(pair, mask=pair_mask)
-        pair += self.triangle_multiplication_incoming(pair, mask=pair_mask)
-        pair += self.pair_attention1(pair, attn_mask=pair_mask_attn)
-        pair += self.pair_attention2(pair, attn_mask=pair_mask_attn)
+        pair += self.triangle_multiplication_outgoing(pair)
+        pair += self.triangle_multiplication_incoming(pair)
+        pair += self.pair_attention1(pair)
+        pair += self.pair_attention2(pair)
 
-            # print("torch pairformer pair attn--------------", )
-            #
-            # pair += self.pair_attention1(pair, mask=pair_mask)
-            # pair += self.pair_attention2(pair, mask=pair_mask)
-        # print("pairformer pair end-------------------")
         pair += self.pair_transition(pair)
 
         if self.with_single is True:
             pair_logits = self.single_pair_logits_projection(
                 self.single_pair_logits_norm(pair))
-
             pair_logits = pair_logits.permute(2, 0, 1)
             single += self.single_attention_(single,
-                                             seq_mask,
+                                             # seq_mask,
                                              pair_logits=pair_logits)
 
             single += self.single_transition(single)
@@ -142,19 +134,17 @@ class EvoformerBlock(nn.Module):
         msa: torch.Tensor,
         pair: torch.Tensor,
         msa_mask: torch.Tensor,
-        pair_mask: Optional[torch.Tensor] = None,
-        pair_mask_attn: Optional[torch.Tensor] = None,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         pair += self.outer_product_mean(msa, msa_mask)
         msa += self.msa_attention1(msa, msa_mask, pair)
         msa += self.msa_transition(msa)
-        pair += self.triangle_multiplication_outgoing(pair, mask=pair_mask)
-        pair += self.triangle_multiplication_incoming(pair, mask=pair_mask)
+        pair += self.triangle_multiplication_outgoing(pair)
+        pair += self.triangle_multiplication_incoming(pair)
         # print("evoformer pair-------------------")
         # pair += self.pair_attention1(pair, mask=pair_mask)
         # pair += self.pair_attention2(pair, mask=pair_mask)
-        pair +=self.pair_attention1(pair,attn_mask=pair_mask_attn)
-        pair += self.pair_attention2(pair, attn_mask=pair_mask_attn)
+        pair +=self.pair_attention1(pair)
+        pair += self.pair_attention2(pair)
         # print("evoformer end-------------")
         pair += self.pair_transition(pair)
 

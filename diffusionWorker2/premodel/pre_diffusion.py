@@ -96,4 +96,4 @@ class DiffusionHead(nn.Module):
             acat_t_to_k_gather_idxs=acat_t_to_k_gather_idxs,
             acat_t_to_k_gather_mask=acat_t_to_k_gather_mask,
           )
-        return  single_cond,pair_cond,queries_single_cond,pair_act,keys_mask,keys_single_cond,pair_logits_cat
+        return  single_cond,queries_single_cond,pair_act,keys_mask,keys_single_cond,pair_logits_cat

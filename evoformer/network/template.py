@@ -103,8 +103,8 @@ class TemplateEmbedding(nn.Module):
         # templates: features.Templates,
         template_aatype, template_atom_positions, template_atom_mask,
 
-        padding_mask_2d: torch.Tensor,
-        attn_mask:torch.Tensor,
+        # padding_mask_2d: torch.Tensor,
+        # attn_mask:torch.Tensor,
         multichain_mask_2d: torch.Tensor,
     ) -> torch.Tensor:
         # num_templates = templates.aatype.shape[0]
@@ -122,7 +122,9 @@ class TemplateEmbedding(nn.Module):
             template_embedding = self.single_template_embedding(
                 query_embedding,
                 template_aatype[template_idx], template_atom_positions[template_idx], template_atom_mask[template_idx],
-                padding_mask_2d=padding_mask_2d,attn_mask=attn_mask, multichain_mask_2d=multichain_mask_2d,template_idx=template_idx
+                # padding_mask_2d=padding_mask_2d,
+                # attn_mask=attn_mask,
+                multichain_mask_2d=multichain_mask_2d,template_idx=template_idx
             )
             summed_template_embeddings += template_embedding
 
@@ -440,8 +442,8 @@ class SingleTemplateEmbedding(nn.Module):
         # templates: features.Templates,
         template_aatype, template_atom_positions, template_atom_mask,
 
-        padding_mask_2d: torch.Tensor,
-        attn_mask: torch.Tensor,
+        # padding_mask_2d: torch.Tensor,
+        # attn_mask: torch.Tensor,
         multichain_mask_2d: torch.Tensor,
 
         template_idx,
@@ -458,7 +460,7 @@ class SingleTemplateEmbedding(nn.Module):
         )
         # padding_mask_2d_c=padding_mask_2d.clone()
         for pairformer_block in self.template_embedding_iteration:
-            act = pairformer_block(act, pair_mask=padding_mask_2d,pair_mask_attn=attn_mask)
+            act = pairformer_block(act)
         # assert torch.allclose(padding_mask_2d_c, padding_mask_2d, atol=1e-2, rtol=1e-2), "输出不一致！"
 
         act = self.output_layer_norm(act)

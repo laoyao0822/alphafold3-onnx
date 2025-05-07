@@ -135,8 +135,8 @@ def dot_product_attention_sdpa(
         q: torch.Tensor,
         k: torch.Tensor,
         v: torch.Tensor,
-        attn_mask,
-        bias
+        bias,
+        attn_mask:Optional[torch.Tensor] = None,
 ) -> torch.Tensor:
     # sdpa_mask=bias
     # bias=bias.contiguous()

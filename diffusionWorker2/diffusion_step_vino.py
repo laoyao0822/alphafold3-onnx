@@ -2,15 +2,10 @@
 from openvino import properties
 import openvino as ov
 import torch
-import torch.nn as nn
-import time
-import torch.distributed as dist
-from openvino import Core
 import pathlib
 import diffusionWorker2.misc.params as params
 import diffusionWorker2.misc.feat_batch as feat_batch
 from diffusionWorker2.network import diffusion_head
-from diffusionWorker2.network.diffusion_step import DiffusionStep
 from diffusionWorker2.premodel.pre_diffusion import DiffusionHead as pre_diffusion
 from diffusionWorker2.network import atom_layout
 
@@ -74,6 +69,7 @@ class diffusion_vino():
 
     def import_diffusion_head_params(self,model_path: pathlib.Path):
         params.import_pre_model_params(self,model_path)
+        self.pre_model.eval()
 
 
     def initOpenvinoModel(self,openvino_path):
@@ -104,7 +100,7 @@ class diffusion_vino():
     def _sample_diffusion(
         self,
         batch: feat_batch.Batch,
-        single,pair,target_feat,real_feat,index=0
+        single,pair,target_feat,seq_mask,real_feat,index=0
         # embeddings: dict[str, torch.Tensor],
     ) :
         """Sample using denoiser on batch."""
@@ -135,7 +131,7 @@ class diffusion_vino():
             layout_axes=(-2, -1),
         ).contiguous()
 
-        (trunk_single_cond, trunk_pair_cond, queries_single_cond,
+        (trunk_single_cond, queries_single_cond,
          pair_act, keys_mask, keys_single_cond, pair_logits_cat) = self.pre_model(
             rel_features=real_feat,
             single=single, pair=pair, target_feat=target_feat,
@@ -163,55 +159,37 @@ class diffusion_vino():
         )
 
 
-        single_c = single
-        pair_c = pair
-        target_feat_c = target_feat
+
         inputs = {
-            "single": single_c.numpy().astype(np.float32),
-            "pair": pair_c.numpy().astype(np.float32),
-            "target_feat": target_feat_c.cpu().numpy().astype(np.float32),
-            "token_index": batch.token_features.token_index.cpu().numpy().astype(np.int32),
-            "residue_index": batch.token_features.residue_index.cpu().numpy().astype(np.int32),
-            "asym_id": batch.token_features.asym_id.cpu().numpy().astype(np.int32),
-            "entity_id": batch.token_features.entity_id.cpu().numpy().astype(np.int32),
-            "sym_id": batch.token_features.sym_id.cpu().numpy().astype(np.int32),
+            'queries_single_cond':queries_single_cond.numpy().astype(np.float32),
+            'pair_act':pair_act.numpy().astype(np.float32),
+            'keys_mask':keys_mask.numpy(),
+            'keys_single_cond':keys_single_cond.numpy().astype(np.float32),
+            'trunk_single_cond':trunk_single_cond.numpy().astype(np.float32),
+            # 'trunk_pair_cond':trunk_pair_cond.numpy().astype(np.float32),
+            'pair_logits_cat':pair_logits_cat.numpy().astype(np.float32),
 
-            "seq_mask": batch.token_features.mask.cpu().numpy().astype(np.bool),
             "pred_dense_atom_mask": pred_dense_atom_mask,
+            'queries_mask':queries_mask.numpy(),
 
-
-            "ref_ops": batch.ref_structure.positions.cpu().numpy().astype(np.float32),
-            "ref_mask": batch.ref_structure.mask.cpu().numpy().astype(np.bool),
-            "ref_element": batch.ref_structure.element.cpu().numpy().astype(np.int32),
-            "ref_charge": batch.ref_structure.charge.cpu().numpy().astype(np.float32),
-            "ref_atom_name_chars": batch.ref_structure.atom_name_chars.cpu().numpy().astype(np.int32),
-            "ref_space_uid": batch.ref_structure.ref_space_uid.cpu().numpy().astype(np.int32),
 
             # 交叉注意力相关输入（以 acat_ 开头的参数）
             "acat_atoms_to_q_gather_idxs": batch.atom_cross_att.token_atoms_to_queries.gather_idxs.cpu().numpy().astype(
                 np.int64),
             "acat_atoms_to_q_gather_mask": batch.atom_cross_att.token_atoms_to_queries.gather_mask.cpu().numpy().astype(
                 np.bool),
+
             "acat_q_to_k_gather_idxs": batch.atom_cross_att.queries_to_keys.gather_idxs.cpu().numpy().astype(
                 np.int64),
             "acat_q_to_k_gather_mask": batch.atom_cross_att.queries_to_keys.gather_mask.cpu().numpy().astype(
                 np.bool),
-            "acat_t_to_q_gather_idxs": batch.atom_cross_att.tokens_to_queries.gather_idxs.cpu().numpy().astype(
-                np.int64),
-            "acat_t_to_q_gather_mask": batch.atom_cross_att.tokens_to_queries.gather_mask.cpu().numpy().astype(
-                np.bool),
+
             "acat_q_to_atom_gather_idxs": batch.atom_cross_att.queries_to_token_atoms.gather_idxs.cpu().numpy().astype(
                 np.int64),
             "acat_q_to_atom_gather_mask": batch.atom_cross_att.queries_to_token_atoms.gather_mask.cpu().numpy().astype(
                 np.bool),
-            "acat_t_to_k_gather_idxs": batch.atom_cross_att.tokens_to_keys.gather_idxs.cpu().numpy().astype(
-                np.int64),
-            "acat_t_to_k_gather_mask": batch.atom_cross_att.tokens_to_keys.gather_mask.cpu().numpy().astype(
-                np.bool),
-            # 参考结构相关输入
-            # 'positions': positions,
-            # 'noise_level_prev': np.array(noise_levels[0],dtype=np.float32),
-            # 'noise_level': np.array(noise_levels[1],dtype=np.float32),
+
+
         }
 
         print("diffusion2 start sample diffusion",positions.shape)
@@ -222,6 +200,7 @@ class diffusion_vino():
             # if input_name in inputs:
             infer_request.set_input_tensor(idx, ov_tensor)
             idx += 1
+        # print(idx)
         # output_tensor=None
         # print(idx)
         sum_time=0
@@ -234,9 +213,9 @@ class diffusion_vino():
             noise_level=noise_levels[1+step_idx]
             # # print(ov.Tensor(noise_level_prev).data)
             # # 将数据填充到输入张量
-            infer_request.set_input_tensor(26,ov.Tensor(positions))
-            infer_request.set_input_tensor(27,ov.Tensor(np.array(noise_level_prev)))
-            infer_request.set_input_tensor(28,ov.Tensor(np.array(noise_level)))
+            infer_request.set_input_tensor(idx,ov.Tensor(positions))
+            infer_request.set_input_tensor(idx+1,ov.Tensor(np.array(noise_level_prev)))
+            infer_request.set_input_tensor(idx+2,ov.Tensor(np.array(noise_level)))
             sum_time+=time.time()-time1
             infer_request.infer()
             positions = infer_request.get_output_tensor(0).data

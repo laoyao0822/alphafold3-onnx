@@ -87,7 +87,7 @@ class diffusion():
         real_feat = real_feat.to(positions.dtype).contiguous()
         # noise_level = torch.tile(noise_levels[None, 0], (num_samples,))
 
-        (trunk_single_cond, trunk_pair_cond, queries_single_cond,
+        (trunk_single_cond, queries_single_cond,
          pair_act, keys_mask, keys_single_cond, pair_logits_cat) = self.pre_model(
             rel_features=real_feat,
             single=single, pair=pair, target_feat=target_feat,
@@ -317,7 +317,7 @@ class diffusion():
         real_feat=real_feat.to(positions.dtype).contiguous()
         # noise_level = torch.tile(noise_levels[None, 0], (num_samples,))
 
-        (trunk_single_cond, trunk_pair_cond ,queries_single_cond,
+        (trunk_single_cond ,queries_single_cond,
          pair_act,keys_mask,keys_single_cond,pair_logits_cat)= self.pre_model(
             rel_features=real_feat,
             single=single, pair=pair, target_feat=target_feat,
@@ -343,13 +343,6 @@ class diffusion():
             acat_t_to_k_gather_mask=batch.atom_cross_att.tokens_to_keys.gather_mask,
             # use_conditioning=use_conditioning,
         )
-        print('trunk_single_cond:', trunk_single_cond.shape)
-        print('queries_single_cond:', queries_single_cond.shape)
-        print('pair_cat', pair_act.shape, pair_act.dtype)
-        print('keys_mask', keys_mask.shape,keys_mask.dtype)
-        print('pair_logits_cat:', pair_logits_cat.shape)
-        print('keys_single_cond:', keys_single_cond.shape)
-        print('qqueries_mask',queries_mask.shape,queries_mask.dtype)
 
         trunk_single_cond=trunk_single_cond.to(dtype=positions.dtype).contiguous()
         queries_single_cond=queries_single_cond.to(dtype=positions.dtype).contiguous()

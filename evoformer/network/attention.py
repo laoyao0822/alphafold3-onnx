@@ -247,7 +247,6 @@ class GridSelfAttention(nn.Module):
             self.isFirst=False
 
     def _attention_tp(self, pair: torch.Tensor, attn_mask: torch.Tensor):
-
         # print('send pair',pair.dtype)
         pair = pair.contiguous()
         # attn_mask = attn_mask.to(dtype=torch.bfloat16).contiguous()
@@ -292,7 +291,7 @@ class GridSelfAttention(nn.Module):
         # return out_proj1
         return out_proj1 + output_proj2
 
-    def forward(self, pair, mask=None,attn_mask=None):
+    def forward(self, pair):
         """
         Args:
             pair (torch.Tensor): [N_token, N_token, c_pair]
@@ -306,7 +305,7 @@ class GridSelfAttention(nn.Module):
         if self.transpose:
             pair = pair.permute(1, 0, 2)
 
-        pair = self._attention(pair, attn_mask=attn_mask)
+        pair = self._attention(pair)
         # if self.world_size > 1 and config._GridAttention_TP and seq_len>config._GridAttention_TP_Min_TOKEN:
         #     pair = self._attention_tp(pair, attn_mask=attn_mask).contiguous()
         # else:

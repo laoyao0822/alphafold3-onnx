@@ -124,8 +124,8 @@ class Evoformer(nn.Module):
         asym_id,
         template_aatype, template_atom_positions, template_atom_mask,
         pair_activations: torch.Tensor,
-        pair_mask: Optional[torch.Tensor] = None,
-        attn_mask: Optional[torch.Tensor] = None,
+        # pair_mask: Optional[torch.Tensor] = None,
+        # attn_mask: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         """Embeds Templates and merges into pair activations."""
         # templates = batch.templates
@@ -133,15 +133,15 @@ class Evoformer(nn.Module):
 
         dtype = pair_activations.dtype
         multichain_mask = (asym_id[:, None] ==
-                           asym_id[None, :]).to(dtype=dtype)
+                           asym_id[None, :]).to(dtype=dtype).contiguous()
         template_act = self.template_embedding(
             query_embedding=pair_activations,
             # templates=templates,
             template_aatype=template_aatype, template_atom_positions=template_atom_positions,
             template_atom_mask=template_atom_mask,
             multichain_mask_2d=multichain_mask,
-            padding_mask_2d=pair_mask,
-            attn_mask=attn_mask,
+            # padding_mask_2d=pair_mask,
+            # attn_mask=attn_mask,
 
         )
 
@@ -193,8 +193,8 @@ class Evoformer(nn.Module):
                 msa=msa_activations,
                 pair=pair_activations,
                 msa_mask=msa_mask,
-                pair_mask=pair_mask,
-                pair_mask_attn=pair_mask_attn,
+                # pair_mask=pair_mask,
+                # pair_mask_attn=pair_mask_attn,
             )
 
         return pair_activations
@@ -223,7 +223,6 @@ class Evoformer(nn.Module):
         pair_activations = self.prev_embedding(
             self.prev_embedding_layer_norm(pair))
 
-
         pair_activations += self._seq_pair_embedding(
             target_feat
         )
@@ -233,16 +232,16 @@ class Evoformer(nn.Module):
         pair_activations += self.position_activations(rel_feat)
 
         pair_activations += self.bond_embedding(contact_matrix)
-
         # pair_mask_c=pair_mask.clone()
 
         single = self.prev_single_embedding(
-            self.prev_single_embedding_layer_norm(single))
+            self.prev_single_embedding_layer_norm(single)).to(dtype=pair.dtype)
 
         single += self.single_activations(target_feat)
 
-        pair_activations=pair_activations.contiguous()
+        pair_activations=pair_activations.to(dtype=pair.dtype).contiguous()
 
+        # time1=time.time()
         pair_activations = self._embed_template_pair(
             asym_id=asym_id, template_aatype=template_aatype,
             template_atom_positions=template_atom_positions, template_atom_mask=template_atom_mask,
@@ -251,7 +250,11 @@ class Evoformer(nn.Module):
             # attn_mask=attn_mask_4
             # pair_mask=pair_mask,
         ).contiguous()
+
+        # print('_embed_template_pair cost',time.time()-time1)
+
         # print("_embed_template_pair over")
+        # time1=time.time()
         pair_activations = self._embed_process_msa(
             # msa_batch=batch.msa,
             msa, msa_mask, deletion_matrix,
@@ -261,11 +264,15 @@ class Evoformer(nn.Module):
             # pair_mask_attn=attn_mask_4,
         ).contiguous()
 
+        # print('_embed_process_msa cost',time.time()-time1)
+
         single=single.contiguous()
+        # time1=time.time()
         # print("_embed_process_msa over")
         for pairformer_b in self.trunk_pairformer:
             pair_activations, single = pairformer_b(
-                pair_activations, pair_mask, single, attn_mask_seq,attn_mask_4)
+                pair_activations, single=single)
+        # print('pairformer_b cost',time.time()-time1)
 
         return single,pair_activations
 
@@ -361,7 +368,6 @@ class EvoFormerOne():
                       ordered_inputs, f=save_path, dynamo=True,
                       input_names=ordered_keys,
                       output_names=output_names,
-
                       optimize=False,
                       opset_version=opset_version,
                       export_params=True,
@@ -405,7 +411,7 @@ class EvoFormerOne():
         # target_feat1=self.create_target_feat_embedding(batch)
         pair= torch.zeros(
                 [num_res, num_res, self.evoformer_pair_channel], device=target_feat.device,
-                dtype=torch.float32,
+                dtype=torch.bfloat16,
             )
         single=torch.zeros(
                 [num_res, self.evoformer_seq_channel], dtype=pair.dtype, device=target_feat.device,

@@ -89,7 +89,6 @@ class SelfAttention(nn.Module):
 
     def forward(self,
                 x: torch.Tensor,
-                mask: torch.Tensor,
                 pair_logits: Optional[torch.Tensor] = None,
                 single_cond: Optional[torch.Tensor] = None) -> torch.Tensor:
         """
@@ -114,7 +113,7 @@ class SelfAttention(nn.Module):
 
         # weighted_avg=dot_product_attention_torch(q, k, v,mask,pair_logits)
         weighted_avg = dot_product_attention_sdpa(
-            q, k, v, attn_mask=mask, bias=pair_logits
+            q, k, v,  bias=pair_logits
         )
 
         weighted_avg = weighted_avg.squeeze(0)
