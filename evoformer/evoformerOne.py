@@ -452,7 +452,6 @@ class EvoFormerOne():
                 deletion_matrix = batch.msa.deletion_matrix,
 
                 asym_id=batch.token_features.asym_id,
-
                 # seq_mask=seq_mask,
                 contact_matrix=contact_matrix,
                 # t_o_pol_idx=batch.polymer_ligand_bond_info.tokens_to_polymer_ligand_bonds.gather_idxs,
