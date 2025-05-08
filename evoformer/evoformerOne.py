@@ -132,8 +132,11 @@ class Evoformer(nn.Module):
         # asym_id = batch.token_features.asym_id
 
         dtype = pair_activations.dtype
+        # print(asym_id)
         multichain_mask = (asym_id[:, None] ==
-                           asym_id[None, :]).to(dtype=dtype).contiguous()
+                           asym_id[None, :])
+        # print("astm_id",multichain_mask.shape)
+        # print(multichain_mask.dtype)
         template_act = self.template_embedding(
             query_embedding=pair_activations,
             # templates=templates,
@@ -213,9 +216,9 @@ class Evoformer(nn.Module):
     ) :
         # target_feat_c=target_feat.clone()
         # turn on when seq_mask is not all
-        attn_mask_4=None
-        pair_mask=None
-        attn_mask_seq=None
+        # attn_mask_4=None
+        # pair_mask=None
+        # attn_mask_seq=None
         # pair=prev['pair']
         # single=prev['single']
         # num_tokens = msa.shape[1]
@@ -248,7 +251,6 @@ class Evoformer(nn.Module):
             pair_activations=pair_activations,
             # pair_mask=pair_mask,
             # attn_mask=attn_mask_4
-            # pair_mask=pair_mask,
         ).contiguous()
 
         # print('_embed_template_pair cost',time.time()-time1)

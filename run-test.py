@@ -248,18 +248,17 @@ class ModelRunner:
             self.diffusion.import_diffusion_head_params(model_dir)
 
             # self.diffusion.initOnnxModel(ONNX_PATH)
-        elif SAVE_ONNX or not DIFFUSION_ONNX:
-            print("select diffusion2")
+        else:
+            print("select diffusion")
             self.diffusion=diffusion()
             self.diffusion.diffusion_head.eval()
             self.diffusion.pre_model.eval()
             # self.diffusion.eval()
-            # diffusion_params.import_jax_weights_(self.diffusion.apply_step,model_dir)
+            diffusion_params.import_diffusion_head_params(self.diffusion,model_dir)
 
         #
         # self._model = self._model.to(device=self._device)
-        else:
-            pass
+
             # self.diffusion=diffusion()
             # self.diffusion.initOnnxModel(ONNX_PATH)
             # self.diffusion.initOpenvinoModel(OPENVINO_PATH)
@@ -371,10 +370,6 @@ class ModelRunner:
                         ref_space_uid=batch.ref_structure.ref_space_uid
                     ).contiguous()
 
-
-
-
-
                     attn_mask_seq = get_attn_mask(mask=seq_mask, dtype=torch.bfloat16, device='cpu', num_heads=16,
                                                   seq_len=num_tokens, batch_size=1).contiguous()
                     pair_mask = seq_mask[:, None] * seq_mask[None, :]
@@ -412,7 +407,6 @@ class ModelRunner:
                     # exit(0)
                     # target_feat=target_feat_c
                     print("Evoformer took %.2f seconds" % (time.time()-time1))
-
 
                     pred_dense_atom_mask = batch.predicted_structure_info.atom_mask
 
