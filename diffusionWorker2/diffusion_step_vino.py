@@ -203,9 +203,7 @@ class diffusion_vino():
         # print(idx)
         # output_tensor=None
         # print(idx)
-        sum_time=0
         for step_idx in range(self.diffusion_steps):
-            time1 = time.time()
             # positions=diffusion_head.random_augmentation(torch.from_numpy(positions),pred_dense_atom_mask_t).numpy()
             positions=random_augmentation(positions,mask=pred_dense_atom_mask)
 
@@ -216,14 +214,12 @@ class diffusion_vino():
             infer_request.set_input_tensor(idx,ov.Tensor(positions))
             infer_request.set_input_tensor(idx+1,ov.Tensor(np.array(noise_level_prev)))
             infer_request.set_input_tensor(idx+2,ov.Tensor(np.array(noise_level)))
-            sum_time+=time.time()-time1
             infer_request.infer()
             positions = infer_request.get_output_tensor(0).data
-        print('conversion time:',sum_time)
         return torch.from_numpy(positions)
 
     def forward(self, batch, single, pair, target_feat,real_feat,index,seq_mask=None,):
-        batch = feat_batch.Batch.from_data_dict(batch)
+        # batch = feat_batch.Batch.from_data_dict(batch)
         print("start:" ,index)
         return self._sample_diffusion(batch,
             single, pair, target_feat,seq_mask,real_feat=real_feat,index=index

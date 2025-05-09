@@ -389,7 +389,14 @@ class ModelRunner:
                     embeddings=self.evoformer.forward(batch,target_feat,attn_mask_4=attn_mask_4, pair_mask=pair_mask,attn_mask_seq=attn_mask_seq)
                     # print(prof.key_averages().table(sort_by="cpu_time_total", row_limit=500))
                     # exit(0)
-                    print("Evoformer took %.2f seconds" % (time.time()-time1))
+                    print("Evoformer took %.2f seconds" % (time.time() - time1))
+
+                    if _WOLRD_SIZE.value>1:
+                        single_s=embeddings['single'].to(dtype=torch.bfloat16).contiguous()
+                        pair_s=embeddings['pair'].to(dtype=torch.bfloat16).contiguous()
+                        dist.broadcast(single_s, src=0)
+                        dist.broadcast(pair_s, src=0)
+
 
                     pred_dense_atom_mask = batch.predicted_structure_info.atom_mask
 
@@ -426,14 +433,18 @@ class ModelRunner:
                                                       target_feat=target_feat,real_feat=rel_feat,index=i,seq_mask=seq_mask,
                                                       )
                         else:
-                            positions[i] = self.diffusion.forward(featurised_example,single=embeddings['single'], pair=embeddings['pair'],
+                            positions[i] = self.diffusion.forward(batch,single=embeddings['single'], pair=embeddings['pair'],
                                                       target_feat=target_feat,real_feat=rel_feat,seq_mask=seq_mask,
                                                                   index=i
                                                       )
 
                         print("diffusion cost time: ", time.time() - time1)
 
-                    for i in range(num_execute):
+                    pos_waits=[]
+                    for i in range(1,_WOLRD_SIZE.value):
+                        pos_waits.append(dist.irecv(positions[num_samples-i],src=i))
+
+                    for i in range(5):
                         time1 = time.time()
                         (predicted_lddt, predicted_experimentally_resolved, full_pde, average_pde,
                          full_pae, tmscore_adjusted_pae_global,
@@ -460,6 +471,7 @@ class ModelRunner:
                     # for key in confidence_output_per_sample[0]:
                     #     confidence_output[key] = torch.stack(
                     #         [sample[key] for sample in confidence_output_per_sample], dim=0)
+                    distogram=self._model(featurised_example,embeddings,positions)
 
                     confidence_output={
                                 'predicted_lddt': predicted_lddt_all,
@@ -470,11 +482,12 @@ class ModelRunner:
                                 'tmscore_adjusted_pae_global': tmscore_adjusted_pae_global_all,
                                 'tmscore_adjusted_pae_interface': tmscore_adjusted_pae_interface_all,
                     }
+                    for pos_wait in pos_waits:
+                        pos_wait.wait()
 
                     final_dense_atom_mask = torch.tile(sample_mask[None], (_NUM_DIFFUSION_SAMPLES.value, 1, 1))
                     samples = {'atom_positions': positions, 'mask': final_dense_atom_mask}
 
-                    distogram=self._model(featurised_example,embeddings,positions)
                     result={
                             'diffusion_samples': samples,
                             'distogram': distogram,
