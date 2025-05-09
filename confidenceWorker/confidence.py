@@ -52,22 +52,19 @@ class ConfidenceOne():
                 ta_to_pb_gather_mask=batch.pseudo_beta_info.token_atoms_to_pseudo_beta.gather_mask,
                 asym_id=batch.token_features.asym_id
             )
-            # print("predicted_lddt:",predicted_lddt.shape)
-            # print("predicted_experimentally_resolved:",predicted_experimentally_resolved.shape)
-            # print("full_pde:",full_pde.shape)
-            # print("average_pde:",average_pde.shape)
-            # print("full_pae:",full_pae.shape)
-            # print("tmscore_adjusted_pae_global:",tmscore_adjusted_pae_global.shape)
-            # print("tmscore_adjusted_pae_interface:",tmscore_adjusted_pae_interface.shape)
-        confidence_output={
-                'predicted_lddt': predicted_lddt,
-                'predicted_experimentally_resolved': predicted_experimentally_resolved,
-                'full_pde': full_pde,
-                'average_pde': average_pde,
-                'full_pae':full_pae,
-                'tmscore_adjusted_pae_global': tmscore_adjusted_pae_global,
-                'tmscore_adjusted_pae_interface': tmscore_adjusted_pae_interface
-            }
+
+
+
+        # confidence_output={
+        #         'predicted_lddt': predicted_lddt,
+        #         'predicted_experimentally_resolved': predicted_experimentally_resolved,
+        #         'full_pde': full_pde,
+        #         'average_pde': average_pde,
+        #         'full_pae':full_pae,
+        #         'tmscore_adjusted_pae_global': tmscore_adjusted_pae_global,
+        #         'tmscore_adjusted_pae_interface': tmscore_adjusted_pae_interface
+        #     }
         # print("confidence_head cost time:",time.time()-time2)
         # print("confidence_output_per_sample:",confidence_output_per_sample[0].shape)
-        return confidence_output
+        return (predicted_lddt,predicted_experimentally_resolved,full_pde,average_pde,
+            full_pae,tmscore_adjusted_pae_global,tmscore_adjusted_pae_interface)

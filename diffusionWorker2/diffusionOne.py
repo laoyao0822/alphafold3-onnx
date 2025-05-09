@@ -256,7 +256,6 @@ class diffusion():
 
             trunk_single_cond=trunk_single_cond, pair_logits_cat=pair_logits_cat,
 
-            # seq_mask=seq_mask,
             pred_dense_atom_mask=pred_dense_atom_mask,
 
 

@@ -127,6 +127,7 @@ _NUM_THREADS = flags.DEFINE_integer(
     'Number of threads to use for the data pipeline.',
 )
 
+#can not use buckets because it will make seq_mask have 0
 # _BUCKETS = flags.DEFINE_list(
 #     'buckets',
 #     # pyformat: disable
@@ -364,9 +365,11 @@ class ModelRunner:
 
                     # print(pair_mask[0])
                     #seq_mask shape torch.Size([1491])
-                    print("seq mask pair mask shape ",pair_mask.shape,seq_mask.shape)
-                    print("zero count",(pair_mask == False).sum().item())
-
+                    # print("seq mask pair mask shape ",pair_mask.shape,seq_mask.shape)
+                    # print("zero count",(pair_mask == False).sum().item())
+                    if(seq_mask==False).sum().item() !=0:
+                        print('zero count of seq_mask is not zero,please cancel bucket:',(seq_mask==False).sum().item() !=0)
+                        exit(0)
                     # attn_mask_4=pair_mask.to(torch.bool)[:, None, None, :].expand(-1,4,-1,-1).contiguous()
                     pair_mask = pair_mask.to(dtype=torch.bool).contiguous()
 
@@ -402,9 +405,20 @@ class ModelRunner:
 
                     sample_mask = batch.predicted_structure_info.atom_mask
                     # samples = self._sample_diffusion(batch, embeddings)
-                    confidence_output_per_sample = []
 
-                    for i in range(_NUM_DIFFUSION_SAMPLES.value):
+                    num_samples=_NUM_DIFFUSION_SAMPLES.value
+                    #准备接收数据
+                    predicted_lddt_all=torch.zeros((num_samples,num_tokens,24),dtype=torch.float32).contiguous()
+                    predicted_experimentally_resolved_all=torch.zeros((num_samples,num_tokens,24),dtype=torch.float32).contiguous()
+                    full_pde_all=torch.zeros((num_samples,num_tokens,num_tokens),dtype=torch.float32).contiguous()
+                    full_pae_all=torch.zeros((num_samples,num_tokens,num_tokens),dtype=torch.float32).contiguous()
+                    tmscore_adjusted_pae_global_all=torch.zeros((num_samples,num_tokens,num_tokens),dtype=torch.float32).contiguous()
+                    tmscore_adjusted_pae_interface_all=torch.zeros((num_samples,num_tokens,num_tokens),dtype=torch.float32).contiguous()
+                    average_pde_all=torch.zeros((num_samples,),dtype=torch.float32).contiguous()
+
+                    num_execute=_NUM_DIFFUSION_SAMPLES.value-_WOLRD_SIZE.value+1
+
+                    for i in range(num_execute):
                         # print("diffusion sample %d" % i)
                         time1 = time.time()
                         if not _USE_DIFFUSION_VINO.value:
@@ -418,24 +432,47 @@ class ModelRunner:
                                                       )
 
                         print("diffusion cost time: ", time.time() - time1)
-                        time1=time.time()
-                        confidence_output = self.confidence.forward(batch=batch,
-                                                                embeddings=embeddings, positions=positions[i],attn_seq_mask=attn_mask_seq,
-                                                                    pair_mask=pair_mask,attn_pair_mask=attn_mask_4)
-                        confidence_output_per_sample.append(confidence_output)
 
+                    for i in range(num_execute):
+                        time1 = time.time()
+                        (predicted_lddt, predicted_experimentally_resolved, full_pde, average_pde,
+                         full_pae, tmscore_adjusted_pae_global,
+                         tmscore_adjusted_pae_interface) = self.confidence.forward(batch=batch,
+                                                                                   embeddings=embeddings,
+                                                                                   positions=positions[i],
+                                                                                   attn_seq_mask=attn_mask_seq,
+                                                                                   pair_mask=pair_mask,
+                                                                                   attn_pair_mask=attn_mask_4)
+                        predicted_experimentally_resolved = predicted_experimentally_resolved.to(
+                            dtype=torch.float32).contiguous()
+
+                        predicted_lddt_all[i] = predicted_lddt
+                        predicted_experimentally_resolved_all[i] = predicted_experimentally_resolved
+                        full_pde_all[i] = full_pde
+                        full_pae_all[i] = full_pae
+                        average_pde_all[i] = average_pde
+                        tmscore_adjusted_pae_global_all[i] = tmscore_adjusted_pae_global
+                        tmscore_adjusted_pae_interface_all[i] = tmscore_adjusted_pae_interface
+
+                        # confidence_output_per_sample.append(confidence_output)
                         print("confidence output time: ", time.time() - time1)
+                    # confidence_output = {}
+                    # for key in confidence_output_per_sample[0]:
+                    #     confidence_output[key] = torch.stack(
+                    #         [sample[key] for sample in confidence_output_per_sample], dim=0)
 
-                    confidence_output = {}
-                    for key in confidence_output_per_sample[0]:
-                        confidence_output[key] = torch.stack(
-                            [sample[key] for sample in confidence_output_per_sample], dim=0)
-
+                    confidence_output={
+                                'predicted_lddt': predicted_lddt_all,
+                                'predicted_experimentally_resolved': predicted_experimentally_resolved_all,
+                                'full_pde': full_pde_all,
+                                'average_pde': average_pde_all,
+                                'full_pae':full_pae_all,
+                                'tmscore_adjusted_pae_global': tmscore_adjusted_pae_global_all,
+                                'tmscore_adjusted_pae_interface': tmscore_adjusted_pae_interface_all,
+                    }
 
                     final_dense_atom_mask = torch.tile(sample_mask[None], (_NUM_DIFFUSION_SAMPLES.value, 1, 1))
                     samples = {'atom_positions': positions, 'mask': final_dense_atom_mask}
-
-
 
                     distogram=self._model(featurised_example,embeddings,positions)
                     result={
