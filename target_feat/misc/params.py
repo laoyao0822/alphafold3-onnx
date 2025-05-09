@@ -219,7 +219,7 @@ def get_model_haiku_params_to_torch(model_dir: pathlib.Path):
     if not os.path.exists(model_dir):
         raise Exception(
             f"Given checkpoint path not exist [{model_dir}]")
-    print(f"Loading from {model_dir}")
+    # print(f"Loading from {model_dir}")
     is_compressed = False
     if model_dir.suffix == ".zst":
         is_compressed = True

@@ -283,7 +283,7 @@ class diffusion():
             self,
             batch: feat_batch.Batch,
             single, pair, target_feat,seq_mask,real_feat,
-
+            index=0
             # embeddings: dict[str, torch.Tensor],
 
     ):
@@ -296,8 +296,8 @@ class diffusion():
             torch.linspace(0, 1, self.diffusion_steps + 1, device=device))
 
         noise_level = noise_levels[0]
-        positions = torch.randn(
-            pred_dense_atom_mask.shape + (3,), device=device,dtype=torch.bfloat16).contiguous()
+        positions = torch.randn((self.num_samples,)+
+            pred_dense_atom_mask.shape + (3,), device=device,dtype=torch.bfloat16)[index].contiguous()
         positions *= noise_level
 
         acat_atoms_to_q_gather_idxs = batch.atom_cross_att.token_atoms_to_queries.gather_idxs
@@ -321,7 +321,6 @@ class diffusion():
          pair_act,keys_mask,keys_single_cond,pair_logits_cat)= self.pre_model(
             rel_features=real_feat,
             single=single, pair=pair, target_feat=target_feat,
-
             ref_ops=batch.ref_structure.positions,
             ref_mask=batch.ref_structure.mask,
             ref_element=batch.ref_structure.element,
@@ -377,11 +376,11 @@ class diffusion():
 
 
 
-    def forward(self, batch, single, pair, target_feat,real_feat,seq_mask=None):
+    def forward(self, batch, single, pair, target_feat,real_feat,index=0,seq_mask=None):
         # self.conversion_time=0
         # batch = feat_batch.Batch.from_data_dict(batch)
         return self._sample_diffusion(batch,
-            single, pair, target_feat,seq_mask,real_feat=real_feat,
+            single, pair, target_feat,seq_mask,real_feat=real_feat,index=index
         )
 
 

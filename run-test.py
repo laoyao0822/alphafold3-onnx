@@ -54,7 +54,7 @@ from evoformer import preprocess
 
 DIFFUSION_ONNX=False
 SAVE_ONNX=False
-UseVino=False
+# UseVino=False
 SAVE_EVO_ONNX=False
 USE_EVO_VINO= False
 SAVE_CONFIDENCE_ONNX=False
@@ -103,6 +103,16 @@ _RUN_INFERENCE = flags.DEFINE_bool(
     True,
     'Whether to run inference on the fold inputs.',
 )
+_USE_DIFFUSION_VINO = flags.DEFINE_bool(
+    'use_diffusion_vino',
+    False,
+    'Whether to run inference on the fold inputs.',
+)
+_DIFFUSION_VINO_PATH = flags.DEFINE_string(
+    'diffusion_vino_path',
+    OPENVINO_PATH,
+    'Path to the model to use for inference.',
+)
 
 _CPU_INFERENCE = flags.DEFINE_bool(
     'cpu_inference',
@@ -113,7 +123,7 @@ _CPU_INFERENCE = flags.DEFINE_bool(
 # control the number of threads used by the data pipeline.
 _NUM_THREADS = flags.DEFINE_integer(
     'num_cpu_threads',
-    119,
+    60,
     'Number of threads to use for the data pipeline.',
 )
 
@@ -195,7 +205,6 @@ def setup(rank, world_size,init_method='tcp://127.0.0.1:8802'):
             device_id=torch.device(f"cuda:{rank}")
         )
         torch.cuda.set_device(rank)
-import onnx
 
 class ModelRunner:
     """Helper class to run structure prediction stages."""
@@ -231,20 +240,10 @@ class ModelRunner:
             self.evoformer.evoformer.eval()
             evoformer_params.import_evoformer_jax_weights_(self.evoformer.evoformer,model_dir)
 
-        # diffusion=onnx.load('/root/pycharm/diffusion_onnx5/diffusion.onnx',load_external_data=True)
-        # onnx.checker.check_model('/root/pycharm/diffusion_onnx5/diffusion.onnx')
-        # print("check success")
-        # sess_options = ort.SessionOptions()
-        # sess_options.enable_profiling = True
-        # sess_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_DISABLE_ALL
-        # ort.set_default_logger_severity(1)
-        # # sess_options.AddConfigEntry(ort.SessionOptions.kOrtSessionOptionEpContextEnable, "1");
-        # session = ort.InferenceSession(ONNX_PATH, sess_options=sess_options,provider_options=['OpenVINO_CPU'])
-        # self.diffusion=session
-        if UseVino:
+        if _USE_DIFFUSION_VINO.value:
             # self.diffusion=diffusion()
             self.diffusion=diffusion_vino()
-            self.diffusion.initOpenvinoModel(OPENVINO_PATH)
+            self.diffusion.initOpenvinoModel(_DIFFUSION_VINO_PATH.value)
             self.diffusion.import_diffusion_head_params(model_dir)
 
             # self.diffusion.initOnnxModel(ONNX_PATH)
@@ -255,14 +254,6 @@ class ModelRunner:
             self.diffusion.pre_model.eval()
             # self.diffusion.eval()
             diffusion_params.import_diffusion_head_params(self.diffusion,model_dir)
-
-        #
-        # self._model = self._model.to(device=self._device)
-
-            # self.diffusion=diffusion()
-            # self.diffusion.initOnnxModel(ONNX_PATH)
-            # self.diffusion.initOpenvinoModel(OPENVINO_PATH)
-            # self.diffusion.import_diffusion_head_params(model_dir)
 
         self.confidence=ConfidenceOne()
         confidence_params.import_jax_weights_(self.confidence,model_dir)
@@ -281,22 +272,15 @@ class ModelRunner:
                 self.evoformer.evoformer = ipex.optimize(self.evoformer.evoformer,weights_prepack=False,optimize_lstm=True,auto_kernel_selection=True,dtype=torch.bfloat16)
 
                 # self.evoformer.evoformer = torch.compile(self.evoformer.evoformer, backend="ipex")
-                if not UseVino:
+                if not _USE_DIFFUSION_VINO.value:
                     self.diffusion.pre_model = ipex.optimize(self.diffusion.pre_model,weights_prepack=False,optimize_lstm=True,auto_kernel_selection=True,dtype=torch.bfloat16)
-
                     self.diffusion.diffusion_head = ipex.optimize(self.diffusion.diffusion_head,weights_prepack=False,optimize_lstm=True,auto_kernel_selection=True,dtype=torch.bfloat16)
                 # self.diffusion.diffusion_head=torch.compile(self.diffusion.diffusion_head,backend="ipex")
                 self.confidence.confidence_head=ipex.optimize(self.confidence.confidence_head,weights_prepack=False,optimize_lstm=True,auto_kernel_selection=True,dtype=torch.bfloat16)
-                # opts = {"device": "CPU", "config": {"PERFORMANCE_HINT": "LATENCY"}, "model_caching" : True,"cache_dir": "./model_cache"}
-                # self.diffusion.diffusion_head=torch.compile(self.diffusion.diffusion_head,backend="openvino",options=opts)
-                # self.evoformer.evoformer=torch.compile(self.evoformer.evoformer, backend="openvino",dynamic=True)
-                # self.diffusion.diffusion_head=torch.compile(self.diffusion.diffusion_head, backend="openvino",dynamic=False,options=opts)
-                # self.evoformer
-                # ov_model=ov.convert_model()
+
 
             if _CPU_FLUSH_DENORM_OPT:
                 torch.set_flush_denormal(True)
-                
             # self._model = torch.compile(self._model,backend="ipex")
             
         if _CPU_INFERENCE.value == False:
@@ -336,9 +320,6 @@ class ModelRunner:
             if _CPU_AMP_OPT:
                 with torch.amp.autocast("cpu", dtype=torch.bfloat16):
                     print("Running inference with AMP on CPU...")
-                    # self._model=torch.jit.trace(self._model,featurised_example)
-                    # result = self._model(featurised_example)
-                    # exit(0)
                     batch = feat_batch.Batch.from_data_dict(featurised_example)
                     time1=time.time()
                     seq_mask = batch.token_features.mask.contiguous()
@@ -398,24 +379,20 @@ class ModelRunner:
                     if SAVE_EVO_ONNX:
                         self.evoformer.getOnnxModel(featurised_example,target_feat,EVO_ONNX_PATH)
 
-                    # target_feat_c=target_feat.clone()
-                    print("create target feat cost time %.2f seconds"% (time.time()-time1))
+                    # print("create target feat cost time %.2f seconds"% (time.time()-time1))
                     time1=time.time()
                     # with profile(activities=[ProfilerActivity.CPU],
                                  # profile_memory=False, record_shapes=False) as prof:
                     embeddings=self.evoformer.forward(batch,target_feat,attn_mask_4=attn_mask_4, pair_mask=pair_mask,attn_mask_seq=attn_mask_seq)
                     # print(prof.key_averages().table(sort_by="cpu_time_total", row_limit=500))
                     # exit(0)
-                    # target_feat=target_feat_c
                     print("Evoformer took %.2f seconds" % (time.time()-time1))
 
                     pred_dense_atom_mask = batch.predicted_structure_info.atom_mask
 
-                    positions = torch.zeros((_NUM_DIFFUSION_SAMPLES.value,) + pred_dense_atom_mask.shape + (3,), device='cpu', dtype=torch.float32)
+                    positions = torch.zeros((_NUM_DIFFUSION_SAMPLES.value,) + pred_dense_atom_mask.shape + (3,),
+                                            device='cpu', dtype=torch.float32).contiguous()
 
-                    # self.diffusion.getOpenvinoModel(batch=featurised_example,
-                    #                             single=embeddings['single'],pair=embeddings['pair'],target_feat=target_feat,
-                    #                             save_path=OPENVINO_PATH)
                     if SAVE_ONNX:
                         self.diffusion.getOnnxModel(batch=batch,
                                             single=embeddings['single'], pair=embeddings['pair'],
@@ -426,25 +403,20 @@ class ModelRunner:
                     sample_mask = batch.predicted_structure_info.atom_mask
                     # samples = self._sample_diffusion(batch, embeddings)
                     confidence_output_per_sample = []
-                    # positions = torch.randn(
-                    #     pred_dense_atom_mask.shape + (3,), device='cpu').contiguous()
+
                     for i in range(_NUM_DIFFUSION_SAMPLES.value):
                         # print("diffusion sample %d" % i)
                         time1 = time.time()
-                        if not UseVino:
-                            # with profile(activities=[ProfilerActivity.CPU],
-                            # profile_memory=False, record_shapes=False) as prof:
+                        if not _USE_DIFFUSION_VINO.value:
                             positions[i] = self.diffusion.forward(batch,single=embeddings['single'], pair=embeddings['pair'],
-                                                      target_feat=target_feat,real_feat=rel_feat,seq_mask=seq_mask,
+                                                      target_feat=target_feat,real_feat=rel_feat,index=i,seq_mask=seq_mask,
                                                       )
-                            # print(prof.key_averages().table(sort_by="cpu_time_total", row_limit=500))
-                            # exit(0)
-
                         else:
                             positions[i] = self.diffusion.forward(featurised_example,single=embeddings['single'], pair=embeddings['pair'],
                                                       target_feat=target_feat,real_feat=rel_feat,seq_mask=seq_mask,
                                                                   index=i
                                                       )
+
                         print("diffusion cost time: ", time.time() - time1)
                         time1=time.time()
                         confidence_output = self.confidence.forward(batch=batch,
@@ -452,10 +424,6 @@ class ModelRunner:
                                                                     pair_mask=pair_mask,attn_pair_mask=attn_mask_4)
                         confidence_output_per_sample.append(confidence_output)
 
-
-                        # assert torch.allclose(pair_mask, pair_mask_c)
-                        # assert torch.allclose(attn_mask_4, attn_mask_4_c)
-                        # assert torch.allclose(attn_mask_seq, attn_mask_seq_c)
                         print("confidence output time: ", time.time() - time1)
 
                     confidence_output = {}
@@ -475,11 +443,6 @@ class ModelRunner:
                             'distogram': distogram,
                             **confidence_output,
                     }
-                    # if torch.allclose(result, target_feat, rtol=1e-5):
-                    #     print("target_feat 张量没有变化")
-                    # else:
-                    #     print("target_feat 张量发生了变化")
-                    # exit(0)
                     result['__identifier__'] = self._model.__identifier__.numpy()
             else:
                 print("Running inference without AMP on CPU...")

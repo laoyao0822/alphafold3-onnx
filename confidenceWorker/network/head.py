@@ -210,12 +210,10 @@ class ConfidenceHead(nn.Module):
         pair_act += self._embed_features(
             dense_atom_positions, ta_to_pb_gather_idxs,ta_to_pb_gather_mask, pair_mask, target_feat)
 
-        time1=time.time()
         # pairformer stack
         for layer in self.confidence_pairformer:
             pair_act, single_act = layer(
                 pair_act, pair_mask, single_act, attn_seq_mask,pair_mask_attn=attn_pair_mask)
-        print('confidence pairformer cost time: ', time.time() - time1)
         # Produce logits to predict a distogram of pairwise distance errors
         # between the input prediction and the ground truth.
 
