@@ -186,6 +186,11 @@ _WOLRD_SIZE = flags.DEFINE_integer(
     1,
     'Number of THE world Size.',
 )
+_CONFIDENCE_DP = flags.DEFINE_bool(
+    'confidence_dp',
+    True,
+    'Whether to run inference on the cpu.',
+)
 import torch.distributed as dist
 def setup(rank, world_size,init_method='tcp://127.0.0.1:8802'):
     if _CPU_INFERENCE.value:
@@ -444,7 +449,10 @@ class ModelRunner:
                     for i in range(1,_WOLRD_SIZE.value):
                         pos_waits.append(dist.irecv(positions[num_samples-i],src=i))
 
-                    for i in range(5):
+                    if not _CONFIDENCE_DP.value:
+                        num_execute=5
+
+                    for i in range(num_execute):
                         time1 = time.time()
                         (predicted_lddt, predicted_experimentally_resolved, full_pde, average_pde,
                          full_pae, tmscore_adjusted_pae_global,
@@ -472,6 +480,54 @@ class ModelRunner:
                     #     confidence_output[key] = torch.stack(
                     #         [sample[key] for sample in confidence_output_per_sample], dim=0)
                     distogram=self._model(featurised_example,embeddings,positions)
+                    for pos_wait in pos_waits:
+                        pos_wait.wait()
+                    print('scuess recv positions')
+                    final_dense_atom_mask = torch.tile(sample_mask[None], (_NUM_DIFFUSION_SAMPLES.value, 1, 1))
+                    samples = {'atom_positions': positions, 'mask': final_dense_atom_mask}
+
+                    if _CONFIDENCE_DP.value and _WOLRD_SIZE.value>1:
+                        slice_sizes = [
+                            num_tokens * 24,  # predicted_lddt
+                            num_tokens * 24,  # predicted_experimentally_resolved
+                            num_tokens * num_tokens,  # full_pde
+                            1,  # average_pde
+                            num_tokens * num_tokens,  # full_pae
+                            num_tokens * num_tokens,  # tmscore_adjusted_pae_global
+                            num_tokens * num_tokens  # tmscore_adjusted_pae_interface
+                        ]
+                        packed_tensor=torch.zeros((num_tokens*(num_tokens*4+48)+1,),dtype=torch.float32).contiguous()
+
+                        gather_list = [torch.empty_like(packed_tensor) for _ in range(_WOLRD_SIZE.value)]
+                        dist.gather(packed_tensor, gather_list, dst=0)
+                        for node_idx, node_data in enumerate(gather_list):
+                            if (node_idx==0):
+                                continue
+                            else:
+                                node_idx=num_samples-node_idx
+                            print('process node_idx',node_idx)
+                            ptr = 0
+                            # predicted_lddt
+                            predicted_lddt_all[node_idx] = node_data[ptr:ptr + slice_sizes[0]].reshape(num_tokens,24)
+                            ptr += slice_sizes[0]
+                            # predicted_experimentally_resolved
+                            predicted_experimentally_resolved_all[node_idx] = node_data[ptr:ptr + slice_sizes[1]].reshape(num_tokens, 24)
+                            ptr += slice_sizes[1]
+                            # 后续张量同理
+                            full_pde_all[node_idx] = node_data[ptr:ptr + slice_sizes[2]].reshape(num_tokens, num_tokens)
+                            ptr += slice_sizes[2]
+                            average_pde_all[node_idx] = node_data[ptr:ptr + slice_sizes[3]].item()  # 标量直接取数值
+                            ptr += slice_sizes[3]
+
+                            full_pae_all[node_idx] = node_data[ptr:ptr + slice_sizes[4]].reshape(num_tokens, num_tokens)
+                            ptr += slice_sizes[4]
+
+                            tmscore_adjusted_pae_global_all[node_idx] = node_data[ptr:ptr + slice_sizes[5]].reshape(
+                                num_tokens, num_tokens)
+                            ptr += slice_sizes[5]
+
+                            tmscore_adjusted_pae_interface_all[node_idx] = node_data[ptr:ptr + slice_sizes[6]].reshape(
+                                num_tokens, num_tokens)
 
                     confidence_output={
                                 'predicted_lddt': predicted_lddt_all,
@@ -482,11 +538,8 @@ class ModelRunner:
                                 'tmscore_adjusted_pae_global': tmscore_adjusted_pae_global_all,
                                 'tmscore_adjusted_pae_interface': tmscore_adjusted_pae_interface_all,
                     }
-                    for pos_wait in pos_waits:
-                        pos_wait.wait()
 
-                    final_dense_atom_mask = torch.tile(sample_mask[None], (_NUM_DIFFUSION_SAMPLES.value, 1, 1))
-                    samples = {'atom_positions': positions, 'mask': final_dense_atom_mask}
+
 
                     result={
                             'diffusion_samples': samples,
