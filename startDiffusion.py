@@ -43,7 +43,7 @@ from confidenceWorker.misc import params as confidence_params
 
 _HOME_DIR = pathlib.Path(os.environ.get('HOME'))
 DEFAULT_MODEL_DIR = _HOME_DIR / 'models/model_103275239_1'
-OPENVINO_PATH = '/root/pycharm/diffusion_head_openvino_2/model.xml'
+OPENVINO_PATH = '/root/ASC25F/AF3/diffusion_head_openvino/model.xml'
 
 
 
@@ -133,12 +133,20 @@ _CPU_FLUSH_DENORM_OPT=True
 _CPU_AMP_OPT=True
 
 
-def setup(rank, world_size,init_method='tcp://127.0.0.1:8802'):
+def setup(rank, world_size,master_addr='192.168.10.1', master_port='8082'):
+    os.environ['MASTER_ADDR'] = master_addr
+    os.environ['MASTER_PORT'] = master_port
+
+    # 配置Gloo使用IB传输
+    # os.environ['GLOO_DEVICE_TRANSPORT'] = 'ibverbs'  # 使用IB Verbs API
+    # os.environ['GLOO_SOCKET_IFNAME'] = 'ib0'  # 指定InfiniBand网络接口
+
+
     if _CPU_INFERENCE.value:
         print("start to set up multi cpu","rank:",rank,"world_size:",world_size)
         dist.init_process_group(
             backend='gloo',
-            init_method=init_method,
+            init_method='tcp://10.0.0.1:11499',
             rank=rank,
             world_size=world_size,
         )

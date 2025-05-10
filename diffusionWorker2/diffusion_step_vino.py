@@ -80,7 +80,7 @@ class diffusion_vino():
         # 编译模型
         config = {
             properties.hint.performance_mode: properties.hint.PerformanceMode.LATENCY,
-            properties.inference_num_threads:60,
+            properties.inference_num_threads:48,
             properties.hint.inference_precision: 'bf16',
             properties.intel_cpu.denormals_optimization: True,
         }

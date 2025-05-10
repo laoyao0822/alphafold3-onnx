@@ -1,5 +1,5 @@
-export LD_PRELOAD=/opt/intel/oneapi/2025.1/lib/libiomp5.so:$LD_PRELOAD
-export LD_PRELOAD=/usr/local/lib/libtcmalloc_minimal.so.4:$LD_PRELOAD
+export LD_PRELOAD=/root/tools/spack/opt/spack/linux-icelake/intel-oneapi-compilers-2025.1.1-py4jsacn4cok2a455wfxuqjaomm2pgiq/compiler/latest/lib/libiomp5.so:$LD_PRELOAD
+export LD_PRELOAD=/root/ASC25F/tcmalloc/lib/libtcmalloc_minimal.so.4:$LD_PRELOAD
 
 #export ONEDNN_GRAPH_CONSTANT_TENSOR_CACHE_CAPACITY="cpu:10240"
 export ONEDNN_PRIMITIVE_CACHE_CAPACITY=91860
@@ -16,5 +16,8 @@ export TCMALLOC_LARGE_ALLOC_REPORT_THRESHOLD=53687091200
 
 #export TCMALLOC_PAGE_HEAP_RESERVE_BYTES=2147483648
 #
-export TCMALLOC_RELEASE_RATE=5
+export TCMALLOC_RELEASE_RATE=4
+
+export GLOO_SOCKET_IFNAME=ibp50s0
+export TSAN_OPTIONS='ignore_noninstrumented_modules=1'
 #export TCMALLOC_MMAP_THRESHOLD=1048576  # 1MB

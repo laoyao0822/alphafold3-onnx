@@ -111,7 +111,7 @@ _CONFORMER_MAX_ITERATIONS = flags.DEFINE_integer(
 )
 
 
-def setup(rank, world_size,init_method='tcp://127.0.0.1:8802'):
+def setup(rank, world_size,init_method='tcp://10.0.0.1:11499'):
     if _CPU_INFERENCE.value:
         print("start to set up multi cpu","rank:",rank,"world_size:",world_size)
         dist.init_process_group(

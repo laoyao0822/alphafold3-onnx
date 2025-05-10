@@ -66,7 +66,7 @@ ONNX_PATH = '/root/pycharm/diffusion_head_onnx_2/diffusion_head.onnx'
 EVO_ONNX_PATH = '/root/pycharm/evo_onnx/evoformer.onnx'
 EVO_VINO_PATH='/root/pycharm/evo_vino/model.xml'
 # ONNX_PATH='/root/pycharm/diffusion_head_onnx_base_fp16/diffusion_head.onnx'
-OPENVINO_PATH = '/root/pycharm/diffusion_head_openvino_2/model.xml'
+OPENVINO_PATH = '/root/ASC25F/AF3/diffusion_head_openvino/model.xml'
 
 # Input and output paths.
 _JSON_PATH = flags.DEFINE_string(
@@ -123,7 +123,7 @@ _CPU_INFERENCE = flags.DEFINE_bool(
 # control the number of threads used by the data pipeline.
 _NUM_THREADS = flags.DEFINE_integer(
     'num_cpu_threads',
-    60,
+    48,
     'Number of threads to use for the data pipeline.',
 )
 
@@ -192,12 +192,19 @@ _CONFIDENCE_DP = flags.DEFINE_bool(
     'Whether to run inference on the cpu.',
 )
 import torch.distributed as dist
-def setup(rank, world_size,init_method='tcp://127.0.0.1:8802'):
+def setup(rank, world_size,master_addr='192.168.10.1', master_port='8082'):
+    os.environ['MASTER_ADDR'] = master_addr
+    os.environ['MASTER_PORT'] = master_port
+
+    # 配置Gloo使用IB传输
+    # os.environ['GLOO_DEVICE_TRANSPORT'] = 'ibverbs'  # 使用IB Verbs API
+    # os.environ['GLOO_SOCKET_IFNAME'] = 'ib0'  # 指定InfiniBand网络接口
+
     if _CPU_INFERENCE.value:
         print("start to set up multi cpu","rank:",rank,"world_size:",world_size)
         dist.init_process_group(
             backend='gloo',
-            init_method=init_method,
+            init_method='tcp://10.0.0.1:11499',
             rank=rank,
             world_size=world_size,
         )
@@ -395,14 +402,13 @@ class ModelRunner:
                     # print(prof.key_averages().table(sort_by="cpu_time_total", row_limit=500))
                     # exit(0)
                     print("Evoformer took %.2f seconds" % (time.time() - time1))
-
+                    time1=time.time()
                     if _WOLRD_SIZE.value>1:
                         single_s=embeddings['single'].to(dtype=torch.bfloat16).contiguous()
                         pair_s=embeddings['pair'].to(dtype=torch.bfloat16).contiguous()
-                        dist.broadcast(single_s, src=0)
-                        dist.broadcast(pair_s, src=0)
-
-
+                        dist.broadcast(single_s, src=0,async_op=True)
+                        dist.broadcast(pair_s, src=0,async_op=True)
+                    print('broadcast time',time.time()-time1)
                     pred_dense_atom_mask = batch.predicted_structure_info.atom_mask
 
                     positions = torch.zeros((_NUM_DIFFUSION_SAMPLES.value,) + pred_dense_atom_mask.shape + (3,),
@@ -429,7 +435,7 @@ class ModelRunner:
                     average_pde_all=torch.zeros((num_samples,),dtype=torch.float32).contiguous()
 
                     num_execute=_NUM_DIFFUSION_SAMPLES.value-_WOLRD_SIZE.value+1
-
+                    print('num to execute:',num_execute)
                     for i in range(num_execute):
                         # print("diffusion sample %d" % i)
                         time1 = time.time()
@@ -480,9 +486,10 @@ class ModelRunner:
                     #     confidence_output[key] = torch.stack(
                     #         [sample[key] for sample in confidence_output_per_sample], dim=0)
                     distogram=self._model(featurised_example,embeddings,positions)
+                    time1=time.time()
                     for pos_wait in pos_waits:
                         pos_wait.wait()
-                    print('scuess recv positions')
+                    print('scuess recv positions cost  time: ', time.time() - time1)
                     final_dense_atom_mask = torch.tile(sample_mask[None], (_NUM_DIFFUSION_SAMPLES.value, 1, 1))
                     samples = {'atom_positions': positions, 'mask': final_dense_atom_mask}
 

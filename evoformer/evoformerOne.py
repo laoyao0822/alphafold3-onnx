@@ -25,31 +25,31 @@ from evoformer.misc import protein_data_processing
 from evoformer.network.dot_product_attention import get_attn_mask
 
 
-from onnxscript import opset22 as op
+# from onnxscript import opset22 as op
 #适用于dynamo分解sdpa
-def custom_scaled_dot_product_attention(
-        query:torch.Tensor,
-        key:torch.Tensor,
-        value:torch.Tensor,
-        attn_mask:torch.Tensor
-):
-    # 分解逻辑（模拟 SDPA 的计算步骤）
-    # scale_factor = 1.0 / (query.size(-1) ** 0.5)
-    k_transposed = op.Transpose(key, perm=[0, 2, 1, 3])
-    # Step 1: Q*K^T 并缩放
-    attn_scores = op.MatMul( query, k_transposed)
-    # scaled_scores = g.op("Div", attn_scores, g.op("Constant", value_t=torch.tensor(scale_factor)))
-    attn_scores=op.Relu(attn_scores)
-    # Step 2: 应用掩码（假设 attn_mask 是加性掩码）
-    # if not symbolic_helper._is_none(attn_mask):
-    scaled_scores =op.Add( attn_scores, attn_mask)
-
-    # Step 3: Softmax
-    attn_weights = op.Softmax(scaled_scores, axis=-1)
-
-    # Step 4: 聚合 Value
-    output =op.MatMul( attn_weights, value)
-    return output
+# def custom_scaled_dot_product_attention(
+#         query:torch.Tensor,
+#         key:torch.Tensor,
+#         value:torch.Tensor,
+#         attn_mask:torch.Tensor
+# ):
+#     # 分解逻辑（模拟 SDPA 的计算步骤）
+#     # scale_factor = 1.0 / (query.size(-1) ** 0.5)
+#     k_transposed = op.Transpose(key, perm=[0, 2, 1, 3])
+#     # Step 1: Q*K^T 并缩放
+#     attn_scores = op.MatMul( query, k_transposed)
+#     # scaled_scores = g.op("Div", attn_scores, g.op("Constant", value_t=torch.tensor(scale_factor)))
+#     attn_scores=op.Relu(attn_scores)
+#     # Step 2: 应用掩码（假设 attn_mask 是加性掩码）
+#     # if not symbolic_helper._is_none(attn_mask):
+#     scaled_scores =op.Add( attn_scores, attn_mask)
+#
+#     # Step 3: Softmax
+#     attn_weights = op.Softmax(scaled_scores, axis=-1)
+#
+#     # Step 4: 聚合 Value
+#     output =op.MatMul( attn_weights, value)
+#     return output
 
 
 
@@ -283,9 +283,9 @@ class EvoFormerOne():
     def __init__(self, num_recycles: int = 10, num_samples: int = 5, diffusion_steps: int = 200):
         super(EvoFormerOne, self).__init__()
 
-        self.num_recycles = num_recycles
+        # self.num_recycles = num_recycles
         # self.num_recycles = 2
-        # self.num_recycles = 0
+        self.num_recycles = 0
         self.num_samples = num_samples
 
         self.evoformer_pair_channel = 128
