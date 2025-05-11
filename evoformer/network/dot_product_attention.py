@@ -35,7 +35,6 @@ def dot_product_attention_torch(q: torch.Tensor,
 
 import torch
 
-@torch.compile
 def dot_product_attention_sdpa_full(
         q: torch.Tensor,
         k: torch.Tensor,

@@ -13,6 +13,8 @@ import einops
 import torch
 import torch.nn as nn
 
+import intel_extension_for_pytorch as ipex
+
 # from torch.nn import RMSNorm as LayerNorm
 from torch.nn import LayerNorm
 # from evoformer.network.dot_product_attention import dot_product_attention
@@ -191,15 +193,7 @@ class GridSelfAttention(nn.Module):
         self.output_projection = nn.Linear(
             self.c_pair, self.c_pair, bias=False)
 
-        self.gating_query1 = nn.Linear(self.c_pair, self.c_pair, bias=False)
-
-        self.output_projection1 = nn.Linear(
-            self.c_pair, self.c_pair // 2, bias=False)
-        self.q_projection1 = nn.Linear(self.c_pair, self.c_pair // self.world_size, bias=False)
-        self.k_projection1 = nn.Linear(self.c_pair, self.c_pair // self.world_size, bias=False)
-        self.v_projection1 = nn.Linear(self.c_pair, self.c_pair // self.world_size, bias=False)
-        self.pair_bias_projection1 = nn.Linear(
-            self.c_pair, self.num_head // self.world_size, bias=False)
+        # ipex_fusion_out=ipex.llm.modules.LinearMul(self.output_projection)
         self.isFirst = True
 
     def _attention(self, pair: torch.Tensor,attn_mask=None) -> torch.Tensor:
@@ -299,16 +293,16 @@ class GridSelfAttention(nn.Module):
             torch.Tensor: [N_token, N_token, c_pair]
         """
         pair = self.act_norm(pair)
-        seq_len = pair.shape[0]
+        # seq_len = pair.shape[0]
         #torch.Size([583, 583, 64]) torch.Size([583, 583]) torch.Size([4, 583, 583])
         if self.transpose:
             pair = pair.permute(1, 0, 2)
 
-        # pair = self._attention(pair)
-        if self.world_size > 1 and config._GridAttention_TP and seq_len>config._GridAttention_TP_Min_TOKEN:
-            pair = self._attention_tp(pair).contiguous()
-        else:
-            pair = self._attention(pair, )
+        pair = self._attention(pair)
+        # if self.world_size > 1 and config._GridAttention_TP and seq_len>config._GridAttention_TP_Min_TOKEN:
+        #     pair = self._attention_tp(pair).contiguous()
+        # else:
+        #     pair = self._attention(pair, )
         # if self.c_pair==128:
         #     print("attention time:",time.time()-time1)
         if self.transpose:

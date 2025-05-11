@@ -334,7 +334,7 @@ class ModelRunner:
                                                               seq_mask=seq_mask,
                                                               )
                     else:
-                        positions = self.diffusion.forward(featurised_example, single=embeddings['single'],
+                        positions = self.diffusion.forward(batch, single=embeddings['single'],
                                                               pair=embeddings['pair'],
                                                               target_feat=target_feat, real_feat=rel_feat,
                                                               seq_mask=seq_mask,

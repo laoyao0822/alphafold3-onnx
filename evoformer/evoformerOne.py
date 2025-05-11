@@ -14,16 +14,16 @@ import torch
 import torch.nn as nn
 from torch import distributed as dist
 from typing import Optional
-
+import manual
+import fan_intergate
 from evoformer import preprocess
 from evoformer.network import featurization
 from evoformer.network.pairformer import EvoformerBlock, PairformerBlock
 from evoformer.network.template import TemplateEmbedding
-# from evoformer.network import atom_cross_attention
 from alphafold3.constants import residue_names
 from evoformer.misc import protein_data_processing
 from evoformer.network.dot_product_attention import get_attn_mask
-
+import onnxscript
 
 # from onnxscript import opset22 as op
 #适用于dynamo分解sdpa
@@ -283,9 +283,9 @@ class EvoFormerOne():
     def __init__(self, num_recycles: int = 10, num_samples: int = 5, diffusion_steps: int = 200):
         super(EvoFormerOne, self).__init__()
 
-        # self.num_recycles = num_recycles
+        self.num_recycles = num_recycles
         # self.num_recycles = 2
-        self.num_recycles = 0
+        # self.num_recycles = 0
         self.num_samples = num_samples
 
         self.evoformer_pair_channel = 128
@@ -304,6 +304,7 @@ class EvoFormerOne():
         single = torch.zeros(
             [num_res, self.evoformer_seq_channel], dtype=torch.float32, device=target_feat.device,
         )
+        # target_feat=target_feat.to(device=target_feat.device)
         contact_matrix = preprocess.get_contact_matrix(
             gather_idxs_polymer_ligand=batch.polymer_ligand_bond_info.tokens_to_polymer_ligand_bonds.gather_idxs,
             tokens_to_polymer_ligand_bonds_gather_mask=batch.polymer_ligand_bond_info.tokens_to_polymer_ligand_bonds.gather_mask,
@@ -312,51 +313,43 @@ class EvoFormerOne():
             num_tokens=num_res,
         )
         seq_mask=batch.token_features.mask
-        attn_mask_seq = get_attn_mask(mask=seq_mask, dtype=pair.dtype, device=pair.device,num_heads=16,seq_len=num_res,batch_size=1)
-        print(attn_mask_seq.shape)
-
+        # attn_mask_seq = get_attn_mask(mask=seq_mask, dtype=pair.dtype, device=pair.device,num_heads=16,seq_len=num_res,batch_size=1)
+        # print(attn_mask_seq.shape)
         # from onnxscript.rewriter import rewrite
 
-        ten_length = torch.export.Dim('ten_length', min=100, max=16000)
         # ten_length = 10 * seq_len
 
         edge_number = torch.export.Dim('edge_number', min=10, max=1500)
         output_names = ["single_out", "pair_out"]
         ordered_keys=['single', 'pair', 'target_feat',
                         'msa', 'msa_mask', 'deletion_matrix',
-                        'token_index', 'residue_index', 'asym_id', 'entity_id', 'sym_id',
-                        'seq_mask',
+                        'asym_id',
                         'contact_matrix',
-                        # 't_o_pol_idx', 't_o_pol_mask', 't_o_lig_idxs', 't_o_lig_masks',
                         'template_aatype', 'template_atom_positions', 'template_atom_mask',
-                        'attn_mask_seq'
+                        'rel_feat'
                         ]
-        print('attn_seq_mask', attn_mask_seq.shape)
+        rel_feat = preprocess.get_rel_feat(token_index=batch.token_features.token_index,
+                                           residue_index=batch.token_features.residue_index,
+                                           asym_id=batch.token_features.asym_id,
+                                           entity_id=batch.token_features.entity_id,
+                                           sym_id=batch.token_features.sym_id, dtype=pair.dtype).contiguous()
         kwarg_inputs = {
-            'single': single,
-            'pair': pair,
-            'target_feat': target_feat,
-            'msa': batch.msa.rows,
+            'single': single.to(dtype=torch.float32),
+            'pair': pair.to(dtype=torch.float32),
+            'target_feat': target_feat.to(dtype=torch.float32),
+            'msa': batch.msa.rows.to(dtype=torch.float32),
             'msa_mask': batch.msa.mask,
-            'deletion_matrix': batch.msa.deletion_matrix,
-            'token_index': batch.token_features.token_index,
-            'residue_index': batch.token_features.residue_index,
+            'deletion_matrix': batch.msa.deletion_matrix.to(dtype=torch.float32),
+
             'asym_id': batch.token_features.asym_id,
-            'entity_id': batch.token_features.entity_id,
-            'sym_id': batch.token_features.sym_id,
 
             # 'seq_mask': batch.token_features.mask,
-            'contact_matrix': contact_matrix,
-
-            # 't_o_pol_idx': batch.polymer_ligand_bond_info.tokens_to_polymer_ligand_bonds.gather_idxs,
-            # 't_o_pol_mask': batch.polymer_ligand_bond_info.tokens_to_polymer_ligand_bonds.gather_mask,
-            # 't_o_lig_idxs': batch.ligand_ligand_bond_info.tokens_to_ligand_ligand_bonds.gather_idxs,
-            # 't_o_lig_masks': batch.ligand_ligand_bond_info.tokens_to_ligand_ligand_bonds.gather_mask,
+            'contact_matrix': contact_matrix.to(dtype=torch.float32),
 
             'template_aatype': batch.templates.aatype,
-            'template_atom_positions': batch.templates.atom_positions,
+            'template_atom_positions': batch.templates.atom_positions.to(dtype=torch.float32),
             'template_atom_mask': batch.templates.atom_mask,
-
+            'rel_feat':rel_feat.to(dtype=torch.float32),
             # 'attn_mask_seq':attn_mask_seq,
         }
         ordered_inputs = tuple(kwarg_inputs[key] for key in ordered_keys)
@@ -370,7 +363,7 @@ class EvoFormerOne():
                       ordered_inputs, f=save_path, dynamo=True,
                       input_names=ordered_keys,
                       output_names=output_names,
-                      optimize=False,
+                      optimize=True,
                       opset_version=opset_version,
                       export_params=True,
 
@@ -383,11 +376,7 @@ class EvoFormerOne():
                           'msa_mask': {1: seq_len},
                           'deletion_matrix': {1: seq_len},
 
-                          'token_index': {0: seq_len},
-                          'residue_index': {0: seq_len},
                           'asym_id': {0: seq_len},
-                          'entity_id': {0: seq_len},
-                          'sym_id': {0: seq_len},
 
                           # 'seq_mask': {0: seq_len},
                           'contact_matrix':{0: seq_len,1: seq_len},
@@ -395,6 +384,7 @@ class EvoFormerOne():
                           'template_aatype': {1: seq_len},
                           'template_atom_positions': {1: seq_len},
                           'template_atom_mask': {1: seq_len},
+                          'rel_feat':{0:seq_len,1:seq_len}
                           # 'attn_mask_seq':{2:seq_len,3:seq_len}
                       },
                           )
@@ -439,7 +429,7 @@ class EvoFormerOne():
         template_atom_positions=batch.templates.atom_positions.to(dtype=pair.dtype).contiguous()
 
         # time1=time.time()
-        for _ in range(self.num_recycles + 1):
+        for recycle in range(self.num_recycles + 1):
         # for _ in range(0+1):
             time1=time.time()
             single,pair = self.evoformer(
@@ -454,10 +444,6 @@ class EvoFormerOne():
                 asym_id=batch.token_features.asym_id,
                 # seq_mask=seq_mask,
                 contact_matrix=contact_matrix,
-                # t_o_pol_idx=batch.polymer_ligand_bond_info.tokens_to_polymer_ligand_bonds.gather_idxs,
-                # t_o_pol_mask = batch.polymer_ligand_bond_info.tokens_to_polymer_ligand_bonds.gather_mask,
-                # t_o_lig_idxs = batch.ligand_ligand_bond_info.tokens_to_ligand_ligand_bonds.gather_idxs,
-                # t_o_lig_masks = batch.ligand_ligand_bond_info.tokens_to_ligand_ligand_bonds.gather_mask,
                 template_aatype = batch.templates.aatype,
                 template_atom_positions = template_atom_positions,
                 template_atom_mask = batch.templates.atom_mask,
@@ -469,6 +455,9 @@ class EvoFormerOne():
                 # prev=embeddings,
             )
             print("evo one cost time:", time.time()-time1)
+            #控制风扇
+            # if recycle==self.num_recycles:
+            #     fan_intergate.set_fan(1,25)
             # exit(0)
         # print("dtype",c_pair.dtype,c_single.dtype)
         # print("shape",c_pair.shape,c_single.shape)

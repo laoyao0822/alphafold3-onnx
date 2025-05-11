@@ -68,7 +68,6 @@ class TriangleMultiplication(nn.Module):
         a, b = torch.squeeze(a, dim=1), torch.squeeze(b, dim=1)
         pair = torch.einsum(self.equation, a, b)
 
-
         pair = pair.permute(1, 2, 0)
         # print("trimul cost time:", time.time() - time1)
         pair = self.center_norm(pair)

@@ -10,11 +10,11 @@ import torch
 #
 # ov_model = ov.convert_model(model, example_input=input_data)
 # ov_model=ov.convert_model('/root/pycharm/diffusion_head_onnx_base2/diffusion_head.onnx')
-onnx_path='/root/pycharm/diffusion_head_onnx_2/diffusion_head.onnx'
-vino_path='/root/pycharm/diffusion_head_openvino_2/model.xml'
+# onnx_path='/root/pycharm/diffusion_head_onnx_2/diffusion_head.onnx'
+# vino_path='/root/pycharm/diffusion_head_openvino_2/model.xml'
 # onnx_path='/root/pycharm/diffusion_head_onnx_no_aug/diffusion_head.onnx'
-# onnx_path='/root/pycharm/evo_onnx/evoformer.onnx'
-# vino_path='/root/pycharm/evo_vino/model.xml'
+onnx_path='/root/ASC25F/AF3/evo_onnx/evoformer.onnx'
+vino_path='/root/ASC25F/AF3/evo_vino/model.xml'
 # onnx_path='/root/pycharm/evo_onnx/evoformer_vim.onnx'
 # onnx_path='/root/pycharm/sdpa_openvino_vim.onnx'
 # vino_path='/root/pycharm/sdpa_openvino.xml'

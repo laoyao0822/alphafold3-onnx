@@ -23,7 +23,7 @@ from alphafold3.model import post_processing
 from alphafold3.model import model
 from alphafold3.model.components import utils
 from evoformer.network.dot_product_attention import get_attn_mask
-
+import fan_intergate
 import numpy as np
 import torch
 import torch._dynamo
@@ -55,7 +55,7 @@ from evoformer import preprocess
 DIFFUSION_ONNX=False
 SAVE_ONNX=False
 # UseVino=False
-SAVE_EVO_ONNX=False
+SAVE_EVO_ONNX= False
 USE_EVO_VINO= False
 SAVE_CONFIDENCE_ONNX=False
 USE_IPEX=True
@@ -63,8 +63,8 @@ _HOME_DIR = pathlib.Path(os.environ.get('HOME'))
 DEFAULT_MODEL_DIR = _HOME_DIR / 'models/model_103275239_1'
 DEFAULT_DB_DIR = _HOME_DIR / 'public_databases'
 ONNX_PATH = '/root/pycharm/diffusion_head_onnx_2/diffusion_head.onnx'
-EVO_ONNX_PATH = '/root/pycharm/evo_onnx/evoformer.onnx'
-EVO_VINO_PATH='/root/pycharm/evo_vino/model.xml'
+EVO_ONNX_PATH = '/root/ASC25F/AF3/evo_onnx/evoformer.onnx'
+EVO_VINO_PATH='/root/ASC25F/AF3/evo_vino/model.xml'
 # ONNX_PATH='/root/pycharm/diffusion_head_onnx_base_fp16/diffusion_head.onnx'
 OPENVINO_PATH = '/root/ASC25F/AF3/diffusion_head_openvino/model.xml'
 
@@ -390,9 +390,9 @@ class ModelRunner:
                                                        asym_id=batch.token_features.asym_id,
                                                        entity_id=batch.token_features.entity_id,
                                                        sym_id=batch.token_features.sym_id, dtype=target_feat.dtype)
-
+                    print('real_feat',rel_feat.shape)
                     if SAVE_EVO_ONNX:
-                        self.evoformer.getOnnxModel(featurised_example,target_feat,EVO_ONNX_PATH)
+                        self.evoformer.getOnnxModel(batch,target_feat,EVO_ONNX_PATH)
 
                     # print("create target feat cost time %.2f seconds"% (time.time()-time1))
                     time1=time.time()
@@ -402,13 +402,17 @@ class ModelRunner:
                     # print(prof.key_averages().table(sort_by="cpu_time_total", row_limit=500))
                     # exit(0)
                     print("Evoformer took %.2f seconds" % (time.time() - time1))
-                    time1=time.time()
+
+                    # time1=time.time()
                     if _WOLRD_SIZE.value>1:
                         single_s=embeddings['single'].to(dtype=torch.bfloat16).contiguous()
                         pair_s=embeddings['pair'].to(dtype=torch.bfloat16).contiguous()
                         dist.broadcast(single_s, src=0,async_op=True)
                         dist.broadcast(pair_s, src=0,async_op=True)
-                    print('broadcast time',time.time()-time1)
+                    # if _RANK_.value==0:
+                    #     fan_intergate.set_fan("1",25)
+
+                    # print('broadcast time',time.time()-time1)
                     pred_dense_atom_mask = batch.predicted_structure_info.atom_mask
 
                     positions = torch.zeros((_NUM_DIFFUSION_SAMPLES.value,) + pred_dense_atom_mask.shape + (3,),
@@ -434,8 +438,9 @@ class ModelRunner:
                     tmscore_adjusted_pae_interface_all=torch.zeros((num_samples,num_tokens,num_tokens),dtype=torch.float32).contiguous()
                     average_pde_all=torch.zeros((num_samples,),dtype=torch.float32).contiguous()
 
+                    #本地需要执行的diffusion数量
                     num_execute=_NUM_DIFFUSION_SAMPLES.value-_WOLRD_SIZE.value+1
-                    print('num to execute:',num_execute)
+                    # print('num to execute:',num_execute)
                     for i in range(num_execute):
                         # print("diffusion sample %d" % i)
                         time1 = time.time()
@@ -455,6 +460,7 @@ class ModelRunner:
                     for i in range(1,_WOLRD_SIZE.value):
                         pos_waits.append(dist.irecv(positions[num_samples-i],src=i))
 
+                    #如果不使用confidence dp则需要执行完成所有的confidence
                     if not _CONFIDENCE_DP.value:
                         num_execute=5
 
@@ -486,10 +492,10 @@ class ModelRunner:
                     #     confidence_output[key] = torch.stack(
                     #         [sample[key] for sample in confidence_output_per_sample], dim=0)
                     distogram=self._model(featurised_example,embeddings,positions)
-                    time1=time.time()
+                    # time1=time.time()
                     for pos_wait in pos_waits:
                         pos_wait.wait()
-                    print('scuess recv positions cost  time: ', time.time() - time1)
+                    # print('scuess recv positions cost  time: ', time.time() - time1)
                     final_dense_atom_mask = torch.tile(sample_mask[None], (_NUM_DIFFUSION_SAMPLES.value, 1, 1))
                     samples = {'atom_positions': positions, 'mask': final_dense_atom_mask}
 
@@ -512,7 +518,7 @@ class ModelRunner:
                                 continue
                             else:
                                 node_idx=num_samples-node_idx
-                            print('process node_idx',node_idx)
+                            # print('process node_idx',node_idx)
                             ptr = 0
                             # predicted_lddt
                             predicted_lddt_all[node_idx] = node_data[ptr:ptr + slice_sizes[0]].reshape(num_tokens,24)
@@ -525,14 +531,11 @@ class ModelRunner:
                             ptr += slice_sizes[2]
                             average_pde_all[node_idx] = node_data[ptr:ptr + slice_sizes[3]].item()  # 标量直接取数值
                             ptr += slice_sizes[3]
-
                             full_pae_all[node_idx] = node_data[ptr:ptr + slice_sizes[4]].reshape(num_tokens, num_tokens)
                             ptr += slice_sizes[4]
-
                             tmscore_adjusted_pae_global_all[node_idx] = node_data[ptr:ptr + slice_sizes[5]].reshape(
                                 num_tokens, num_tokens)
                             ptr += slice_sizes[5]
-
                             tmscore_adjusted_pae_interface_all[node_idx] = node_data[ptr:ptr + slice_sizes[6]].reshape(
                                 num_tokens, num_tokens)
 
