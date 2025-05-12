@@ -337,7 +337,7 @@ class ModelRunner:
                     time1=time.time()
                     seq_mask = batch.token_features.mask.contiguous()
                     num_tokens = seq_mask.shape[0]
-
+                    print("start to process lenghth: ",num_tokens)
                     target_feat = self.target_feat(
                         aatype=batch.token_features.aatype,
                         profile=batch.msa.profile,
@@ -390,7 +390,7 @@ class ModelRunner:
                                                        asym_id=batch.token_features.asym_id,
                                                        entity_id=batch.token_features.entity_id,
                                                        sym_id=batch.token_features.sym_id, dtype=target_feat.dtype)
-                    print('real_feat',rel_feat.shape)
+                    # print('real_feat',rel_feat.shape)
                     if SAVE_EVO_ONNX:
                         self.evoformer.getOnnxModel(batch,target_feat,EVO_ONNX_PATH)
 

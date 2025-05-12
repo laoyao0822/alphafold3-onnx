@@ -14,8 +14,8 @@ import torch
 import torch.nn as nn
 from torch import distributed as dist
 from typing import Optional
-import manual
-import fan_intergate
+# import manual
+# import fan_intergate
 from evoformer import preprocess
 from evoformer.network import featurization
 from evoformer.network.pairformer import EvoformerBlock, PairformerBlock

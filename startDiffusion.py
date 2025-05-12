@@ -316,6 +316,11 @@ class ModelRunner:
                     single = torch.zeros(
                         [num_tokens,384 ], device=target_feat.device, dtype=torch.bfloat16
                     ).contiguous()
+                    # if not _USE_DIFFUSION_VINO.value:
+                    #     print('start to hot')
+                    #     self.diffusion.hot_model(batch=batch, target_feat=target_feat, seq_mask=seq_mask,real_feat=rel_feat )
+                    #     print('hot done')
+
                     print("recv diffusion data")
                     dist.broadcast(tensor=single, src=0)
                     dist.broadcast(tensor=pair, src=0)
@@ -326,7 +331,11 @@ class ModelRunner:
                         'single': single,
                         'target_feat': target_feat,  # type: ignore
                     }
+
+
+
                     time1 = time.time()
+
                     if not _USE_DIFFUSION_VINO.value:
                         positions= self.diffusion.forward(batch, single=embeddings['single'],
                                                               pair=embeddings['pair'],

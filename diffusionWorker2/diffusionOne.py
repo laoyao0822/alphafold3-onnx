@@ -43,7 +43,8 @@ class diffusion():
         self.step_scale = 1.5
         self.diffusion_head = diffusion_head.DiffusionHead()
         self.diffusion_head.eval()
-
+        self.evoformer_pair_channel = 128
+        self.evoformer_seq_channel = 384
         self.pre_model=pre_diffusion()
 
 
@@ -277,6 +278,88 @@ class diffusion():
             )
         return positions_out
         # return positions_out, noise_level
+    def hot_model(self,batch: feat_batch.Batch,target_feat,real_feat,seq_mask):
+        pred_dense_atom_mask = batch.predicted_structure_info.atom_mask
+        device = pred_dense_atom_mask.device
+        noise_levels = diffusion_head.noise_schedule(
+            torch.linspace(0, 1, self.diffusion_steps + 1, device=device))
+        num_res = batch.num_res
+
+        noise_level = noise_levels[0]
+        positions = torch.randn((self.num_samples,) +
+                                pred_dense_atom_mask.shape + (3,), device=device, dtype=torch.bfloat16)[
+            0].contiguous()
+        positions *= noise_level
+
+        acat_atoms_to_q_gather_idxs = batch.atom_cross_att.token_atoms_to_queries.gather_idxs
+        acat_atoms_to_q_gather_mask = batch.atom_cross_att.token_atoms_to_queries.gather_mask
+
+        queries_mask = atom_layout.convertV2(
+            acat_atoms_to_q_gather_idxs,
+            acat_atoms_to_q_gather_mask,
+            pred_dense_atom_mask,
+            layout_axes=(-2, -1),
+        ).contiguous()
+        pair = torch.zeros(
+            [num_res, num_res, self.evoformer_pair_channel], device=target_feat.device,
+            dtype=torch.bfloat16,
+        )
+        single = torch.zeros(
+            [num_res, self.evoformer_seq_channel], dtype=pair.dtype, device=target_feat.device,
+        )
+        (trunk_single_cond, queries_single_cond,
+         pair_act, keys_mask, keys_single_cond, pair_logits_cat) = self.pre_model(
+            rel_features=real_feat,
+            single=single, pair=pair, target_feat=target_feat,
+            ref_ops=batch.ref_structure.positions,
+            ref_mask=batch.ref_structure.mask,
+            ref_element=batch.ref_structure.element,
+            ref_charge=batch.ref_structure.charge,
+            ref_atom_name_chars=batch.ref_structure.atom_name_chars,
+            ref_space_uid=batch.ref_structure.ref_space_uid,
+
+            queries_mask=queries_mask,
+
+            acat_atoms_to_q_gather_idxs=acat_atoms_to_q_gather_idxs,
+            acat_atoms_to_q_gather_mask=acat_atoms_to_q_gather_mask,
+            acat_t_to_q_gather_idxs=batch.atom_cross_att.tokens_to_queries.gather_idxs,
+            acat_t_to_q_gather_mask=batch.atom_cross_att.tokens_to_queries.gather_mask,
+
+            acat_q_to_k_gather_idxs=batch.atom_cross_att.queries_to_keys.gather_idxs,
+            acat_q_to_k_gather_mask=batch.atom_cross_att.queries_to_keys.gather_mask,
+
+            acat_t_to_k_gather_idxs=batch.atom_cross_att.tokens_to_keys.gather_idxs,
+            acat_t_to_k_gather_mask=batch.atom_cross_att.tokens_to_keys.gather_mask,
+            # use_conditioning=use_conditioning,
+        )
+
+        trunk_single_cond = trunk_single_cond.to(dtype=positions.dtype).contiguous()
+        queries_single_cond = queries_single_cond.to(dtype=positions.dtype).contiguous()
+        pair_act = pair_act.to(dtype=positions.dtype).contiguous()
+        keys_mask = keys_mask.contiguous()
+        keys_single_cond = keys_single_cond.to(dtype=positions.dtype).contiguous()
+        pair_logits_cat = pair_logits_cat.to(dtype=positions.dtype).contiguous()
+
+        for step_idx in range(10):
+            positions = self._apply_denoising_step(
+                queries_single_cond=queries_single_cond,
+                pair_act=pair_act, keys_mask=keys_mask, keys_single_cond=keys_single_cond,
+                # single=embeddings['single'], pair=embeddings['pair'], target_feat=embeddings['target_feat'],
+                trunk_single_cond=trunk_single_cond, pair_logits_cat=pair_logits_cat,
+                seq_mask=seq_mask,
+                pred_dense_atom_mask=pred_dense_atom_mask,
+
+                queries_mask=queries_mask,
+
+                acat_atoms_to_q_gather_idxs=acat_atoms_to_q_gather_idxs,
+                acat_atoms_to_q_gather_mask=acat_atoms_to_q_gather_mask,
+                acat_q_to_k_gather_idxs=batch.atom_cross_att.queries_to_keys.gather_idxs,
+                acat_q_to_k_gather_mask=batch.atom_cross_att.queries_to_keys.gather_mask,
+
+                acat_q_to_atom_gather_idxs=batch.atom_cross_att.queries_to_token_atoms.gather_idxs,
+                acat_q_to_atom_gather_mask=batch.atom_cross_att.queries_to_token_atoms.gather_mask,
+                positions=positions, noise_level_prev=noise_levels[step_idx], noise_level=noise_levels[1 + step_idx],
+            )
 
     def _sample_diffusion(
             self,
@@ -284,7 +367,6 @@ class diffusion():
             single, pair, target_feat,seq_mask,real_feat,
             index=0
             # embeddings: dict[str, torch.Tensor],
-
     ):
         """Sample using denoiser on batch."""
 
