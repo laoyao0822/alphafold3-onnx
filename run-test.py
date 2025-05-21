@@ -55,18 +55,18 @@ from evoformer import preprocess
 DIFFUSION_ONNX=False
 SAVE_ONNX=False
 # UseVino=False
-SAVE_EVO_ONNX= False
+SAVE_EVO_ONNX= True
 USE_EVO_VINO= False
 SAVE_CONFIDENCE_ONNX=False
-USE_IPEX=True
+USE_IPEX=False
 _HOME_DIR = pathlib.Path(os.environ.get('HOME'))
 DEFAULT_MODEL_DIR = _HOME_DIR / 'models/model_103275239_1'
 DEFAULT_DB_DIR = _HOME_DIR / 'public_databases'
-ONNX_PATH = '/root/pycharm/diffusion_head_onnx_2/diffusion_head.onnx'
-EVO_ONNX_PATH = '/root/ASC25F/AF3/evo_onnx/evoformer.onnx'
-EVO_VINO_PATH='/root/ASC25F/AF3/evo_vino/model.xml'
+ONNX_PATH = '/root/asc25/diffusion_head_onnx_2/diffusion_head.onnx'
+EVO_ONNX_PATH = '/root/asc25/evo_onnx/evoformer.onnx'
+EVO_VINO_PATH='/root/asc25/evo_vino/model.xml'
 # ONNX_PATH='/root/pycharm/diffusion_head_onnx_base_fp16/diffusion_head.onnx'
-OPENVINO_PATH = '/root/ASC25F/AF3/diffusion_head_openvino/model.xml'
+OPENVINO_PATH = '/root/asc25/diffusion_head_openvino/model.xml'
 
 # Input and output paths.
 _JSON_PATH = flags.DEFINE_string(
@@ -123,7 +123,7 @@ _CPU_INFERENCE = flags.DEFINE_bool(
 # control the number of threads used by the data pipeline.
 _NUM_THREADS = flags.DEFINE_integer(
     'num_cpu_threads',
-    48,
+    8,
     'Number of threads to use for the data pipeline.',
 )
 
@@ -331,7 +331,7 @@ class ModelRunner:
 
         else: # CPU Inference
             if _CPU_AMP_OPT:
-                with torch.amp.autocast("cpu", dtype=torch.bfloat16):
+                # with torch.amp.autocast("cpu", dtype=torch.bfloat16):
                     print("Running inference with AMP on CPU...")
                     batch = feat_batch.Batch.from_data_dict(featurised_example)
                     time1=time.time()

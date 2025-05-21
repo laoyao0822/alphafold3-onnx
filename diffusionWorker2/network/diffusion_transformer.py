@@ -20,9 +20,7 @@ from diffusionWorker2.network import atom_layout
 # from diffusionWorker2.network.layer_norm import LayerNorm
 from torch.nn import LayerNorm
 
-from diffusionWorker2.network.dot_product_attention import dot_product_attention
 from diffusionWorker2.network.gated_linear_unit import gated_linear_unit
-# from diffusionWorker2.network.dot_product_attention import dot_product_attention
 from diffusionWorker2.network.dot_product_attention import dot_product_attention_sdpa
 
 

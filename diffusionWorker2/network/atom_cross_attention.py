@@ -14,13 +14,10 @@ from typing import Optional
 import time
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
-from diffusionWorker2.misc import feat_batch
 from diffusionWorker2.network import atom_layout, utils
 from diffusionWorker2.network.diffusion_transformer import DiffusionCrossAttTransformer
 from torch.nn import LayerNorm
-# from diffusionWorker2.network.layer_norm import LayerNorm
 
 @dataclasses.dataclass(frozen=True)
 class AtomCrossAttEncoderOutput:

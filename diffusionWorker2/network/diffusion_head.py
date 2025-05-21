@@ -12,11 +12,9 @@
 import torch
 import torch.nn as nn
 
-from diffusionWorker2.misc import feat_batch
 from diffusionWorker2.network import featurization, utils
 from diffusionWorker2.network.diffusion_transformer import DiffusionTransformer, DiffusionTransition
 from diffusionWorker2.network.atom_cross_attention import AtomCrossAttEncoder, AtomCrossAttDecoder
-# from diffusionWorker2.network.layer_norm import LayerNorm
 from torch.nn import LayerNorm
 import time
 # Carefully measured by averaging multimer training set.

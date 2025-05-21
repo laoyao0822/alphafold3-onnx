@@ -13,8 +13,8 @@ import torch
 # onnx_path='/root/pycharm/diffusion_head_onnx_2/diffusion_head.onnx'
 # vino_path='/root/pycharm/diffusion_head_openvino_2/model.xml'
 # onnx_path='/root/pycharm/diffusion_head_onnx_no_aug/diffusion_head.onnx'
-onnx_path='/root/ASC25F/AF3/evo_onnx/evoformer.onnx'
-vino_path='/root/ASC25F/AF3/evo_vino/model.xml'
+onnx_path='/root/asc25/evo_onnx/evoformer.onnx'
+vino_path='/root/asc25/evo_vino/model.xml'
 # onnx_path='/root/pycharm/evo_onnx/evoformer_vim.onnx'
 # onnx_path='/root/pycharm/sdpa_openvino_vim.onnx'
 # vino_path='/root/pycharm/sdpa_openvino.xml'
@@ -113,6 +113,7 @@ from openvino.frontend.onnx import OpExtension
 # core.add_extension(ConversionExtension("ai.onnx.Identity", convert_sdpa))
 # 添加扩展到 OpenVINO 运行时
 ov_model=ov.convert_model(onnx_path)
+
 # ov_model=core.read_model(onnx_path)
 # ov_model=ov.convert_model(internal_path,verbose=True )
 ###### Option 1: Save to OpenVINO IR:

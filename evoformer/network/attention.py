@@ -13,7 +13,7 @@ import einops
 import torch
 import torch.nn as nn
 
-import intel_extension_for_pytorch as ipex
+# import intel_extension_for_pytorch as ipex
 
 # from torch.nn import RMSNorm as LayerNorm
 from torch.nn import LayerNorm

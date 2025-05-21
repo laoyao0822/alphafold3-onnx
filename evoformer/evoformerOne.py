@@ -23,40 +23,7 @@ from evoformer.network.template import TemplateEmbedding
 from alphafold3.constants import residue_names
 from evoformer.misc import protein_data_processing
 from evoformer.network.dot_product_attention import get_attn_mask
-import onnxscript
-
-# from onnxscript import opset22 as op
-#适用于dynamo分解sdpa
-# def custom_scaled_dot_product_attention(
-#         query:torch.Tensor,
-#         key:torch.Tensor,
-#         value:torch.Tensor,
-#         attn_mask:torch.Tensor
-# ):
-#     # 分解逻辑（模拟 SDPA 的计算步骤）
-#     # scale_factor = 1.0 / (query.size(-1) ** 0.5)
-#     k_transposed = op.Transpose(key, perm=[0, 2, 1, 3])
-#     # Step 1: Q*K^T 并缩放
-#     attn_scores = op.MatMul( query, k_transposed)
-#     # scaled_scores = g.op("Div", attn_scores, g.op("Constant", value_t=torch.tensor(scale_factor)))
-#     attn_scores=op.Relu(attn_scores)
-#     # Step 2: 应用掩码（假设 attn_mask 是加性掩码）
-#     # if not symbolic_helper._is_none(attn_mask):
-#     scaled_scores =op.Add( attn_scores, attn_mask)
-#
-#     # Step 3: Softmax
-#     attn_weights = op.Softmax(scaled_scores, axis=-1)
-#
-#     # Step 4: 聚合 Value
-#     output =op.MatMul( attn_weights, value)
-#     return output
-
-
-
-
-# 注册自定义符号函数
-
-
+# import onnxscript
 
 class Evoformer(nn.Module):
     def __init__(self, msa_channel: int = 64):
@@ -103,7 +70,6 @@ class Evoformer(nn.Module):
         self.trunk_pairformer = nn.ModuleList(
             [PairformerBlock(with_single=True) for _ in range(self.pairformer_num_layer)])
         self.POLYMER_TYPES_NUM_WITH_UNKNOWN_AND_GAP=residue_names.POLYMER_TYPES_NUM_WITH_UNKNOWN_AND_GAP
-
 
 
     def _seq_pair_embedding(
