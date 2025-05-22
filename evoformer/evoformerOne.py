@@ -374,7 +374,7 @@ class EvoFormerOne():
         single=torch.zeros(
                 [num_res, self.evoformer_seq_channel], dtype=pair.dtype, device=target_feat.device,
             )
-        target_feat = target_feat.to(dtype=pair.dtype).contiguous()
+        target_feat = target_feat.to(dtype=pair.dtype,device=target_feat.device).contiguous()
 
         contact_matrix=preprocess.get_contact_matrix(
             gather_idxs_polymer_ligand=batch.polymer_ligand_bond_info.tokens_to_polymer_ligand_bonds.gather_idxs,
@@ -382,12 +382,12 @@ class EvoFormerOne():
             gather_idxs_ligand_ligand = batch.ligand_ligand_bond_info.tokens_to_ligand_ligand_bonds.gather_idxs,
             tokens_to_ligand_ligand_bonds_gather_mask = batch.ligand_ligand_bond_info.tokens_to_ligand_ligand_bonds.gather_mask,
             num_tokens=num_res,
-        ).to(pair.dtype).contiguous()
+        ).to(dtype=pair.dtype,device=target_feat.device).contiguous()
         rel_feat=preprocess.get_rel_feat( token_index=batch.token_features.token_index,
                 residue_index = batch.token_features.residue_index,
                 asym_id = batch.token_features.asym_id,
                 entity_id = batch.token_features.entity_id,
-                sym_id = batch.token_features.sym_id,dtype=pair.dtype).contiguous()
+                sym_id = batch.token_features.sym_id,dtype=pair.dtype,device=target_feat.device).contiguous()
 
         seq_mask = batch.token_features.mask
         num_tokens = seq_mask.shape[0]

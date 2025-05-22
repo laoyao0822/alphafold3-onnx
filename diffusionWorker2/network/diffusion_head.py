@@ -142,7 +142,6 @@ class DiffusionHead(nn.Module):
         # use_conditioning: bool,//always true
     ) -> tuple[torch.Tensor, torch.Tensor]:
 
-
         noise_embedding = self.fourier_embeddings(
             (1 / 4) * torch.log(noise_level / SIGMA_DATA)
         )

@@ -25,7 +25,6 @@ class DiffusionHead(nn.Module):
         self.pair_transition_1 = DiffusionTransition(
             self.pair_channel, c_single_cond=None)
 
-
         self.c_single_cond_initial = 831
 
         self.single_cond_initial_projection = nn.Linear(
@@ -76,6 +75,7 @@ class DiffusionHead(nn.Module):
                 acat_t_to_k_gather_mask,
                 ):
         pair_cond,single_cond = self._conditioning(rel_features,single,pair,target_feat)
+
         pair_logits_cat=self.transformer(pair_cond)
         # print('pair_logits_cat', pair_logits_cat.shape)
         queries_single_cond,pair_act,keys_mask,keys_single_cond=self.atom_cross_att_encoder(

@@ -28,15 +28,7 @@ class AtomCrossAttEncoderOutput:
     keys_mask: torch.Tensor  # (num_subsets, num_keys)
     keys_single_cond: torch.Tensor  # (num_subsets, num_keys, ch)
     pair_cond: torch.Tensor  # (num_subsets, num_queries, num_keys, ch)
-    
-# ref:
-# class AtomCrossAttEncoderConfig(base_config.BaseConfig):
-#   per_token_channels: int = 768
-#   per_atom_channels: int = 128
-#   atom_transformer: diffusion_transformer.CrossAttTransformer.Config = (
-#       base_config.autocreate(num_intermediate_factor=2, num_blocks=3)
-#   )
-#   per_atom_pair_channels: int = 16
+
 
 
 class AtomCrossAttEncoder(nn.Module):
@@ -73,22 +65,10 @@ class AtomCrossAttEncoder(nn.Module):
         
         if self.with_trunk_single_cond is True:
             self.c_trunk_single_cond = 384
-            # self.lnorm_trunk_single_cond = LayerNorm(
-            #     self.c_trunk_single_cond, bias=False)
-            # self.lnorm_trunk_single_cond=nn.LayerNorm(self.c_trunk_single_cond, bias=False)
-            # self.embed_trunk_single_cond = nn.Linear(
-            #     self.c_trunk_single_cond, self.per_atom_channels, bias=False)
 
         if self.with_token_atoms_act is True:
             self.atom_positions_to_features = nn.Linear(
                 self.c_positions, self.per_atom_channels, bias=False)
-            
-        # if self.with_trunk_pair_cond is True:
-        #     self.c_trunk_pair_cond = 128
-        #     self.lnorm_trunk_pair_cond = LayerNorm(
-        #         self.c_trunk_pair_cond, bias=False)
-        #     self.embed_trunk_pair_cond = nn.Linear(
-        #         self.c_trunk_pair_cond, self.per_atom_pair_channels, bias=False)
 
     def forward(
         self,
@@ -113,8 +93,6 @@ class AtomCrossAttEncoder(nn.Module):
         queries_single_cond,
         pair_act, keys_mask, keys_single_cond
     ) :
-
-
         queries_act = atom_layout.convertV2(
             acat_atoms_to_q_gather_idxs,
             acat_atoms_to_q_gather_mask,
@@ -127,9 +105,6 @@ class AtomCrossAttEncoder(nn.Module):
         queries_act *= queries_mask[..., None]
         queries_act += queries_single_cond
 
-        # pair_act=self.pair_act.clone().contiguous()
-        # keys_mask=self.keys_mask
-        # keys_single_cond=self.keys_single_cond.clone().contiguous()
 
         queries_act = self.atom_transformer_encoder(
             queries_act=queries_act,
@@ -160,24 +135,12 @@ class AtomCrossAttEncoder(nn.Module):
         )
         return token_act,skip_connection
 
-        # return AtomCrossAttEncoderOutput(
-        #     token_act=token_act,
-        #     skip_connection=skip_connection,
-        #     queries_mask=queries_mask,
-        #     queries_single_cond=queries_single_cond,
-        #     keys_mask=keys_mask,
-        #     keys_single_cond=keys_single_cond,
-        #     pair_cond=pair_act,
-        # )
-
 
 class AtomCrossAttDecoder(nn.Module):
     def __init__(self) -> None:
         super(AtomCrossAttDecoder, self).__init__()
 
         self.per_atom_channels = 128
-
-
 
         self.project_token_features_for_broadcast = nn.Linear(
             768, self.per_atom_channels, bias=False)
@@ -207,8 +170,6 @@ class AtomCrossAttDecoder(nn.Module):
                 keys_single_cond,pair_cond
                 # enc: AtomCrossAttEncoderOutput
                 ) -> torch.Tensor:
-        # acat_q_to_k_gather_idxs = batch.atom_cross_att.queries_to_keys.gather_idxs
-        # acat_q_to_k_gather_mask = batch.atom_cross_att.queries_to_keys.gather_mask
         token_act = self.project_token_features_for_broadcast(token_act)
         num_token, max_atoms_per_token = acat_q_to_atom_gather_idxs.shape
             # batch.atom_cross_att.queries_to_token_atoms.shape
@@ -228,9 +189,6 @@ class AtomCrossAttDecoder(nn.Module):
         )
         queries_act +=skip_connection
         queries_act *= queries_mask[..., None]
-
-        # queries_act += enc.skip_connection
-        # queries_act *= enc.queries_mask[..., None]
 
         # Run the atom cross attention transformer.
         queries_act = self.atom_transformer_decoder(

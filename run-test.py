@@ -27,6 +27,7 @@ import fan_intergate
 import numpy as np
 import torch
 import torch._dynamo
+
 torch._dynamo.config.suppress_errors = True
 import torch.utils._pytree as pytree
 
@@ -45,7 +46,6 @@ from confidenceWorker.confidence import ConfidenceOne
 from confidenceWorker.misc import params as confidence_params
 import time
 
-# from diffusionWorker2.diffusionOne import DiffusionOne
 from diffusionWorker2.diffusionOne import diffusion
 
 from diffusionWorker2.misc import params as diffusion_params
@@ -55,18 +55,22 @@ from evoformer import preprocess
 DIFFUSION_ONNX=False
 SAVE_ONNX=False
 # UseVino=False
-SAVE_EVO_ONNX= True
+SAVE_EVO_ONNX= False
 USE_EVO_VINO= False
 SAVE_CONFIDENCE_ONNX=False
 USE_IPEX=False
+
 _HOME_DIR = pathlib.Path(os.environ.get('HOME'))
 DEFAULT_MODEL_DIR = _HOME_DIR / 'models/model_103275239_1'
 DEFAULT_DB_DIR = _HOME_DIR / 'public_databases'
-ONNX_PATH = '/root/asc25/diffusion_head_onnx_2/diffusion_head.onnx'
-EVO_ONNX_PATH = '/root/asc25/evo_onnx/evoformer.onnx'
-EVO_VINO_PATH='/root/asc25/evo_vino/model.xml'
-# ONNX_PATH='/root/pycharm/diffusion_head_onnx_base_fp16/diffusion_head.onnx'
-OPENVINO_PATH = '/root/asc25/diffusion_head_openvino/model.xml'
+ONNX_PATH = '/root/asc25'
+OPENVINO_PATH = '/root/asc25'
+
+
+ONNX_PATH_DIFFUSION_PATH=ONNX_PATH+'/diffusion_head_onnx_2/diffusion_head.onnx'
+EVO_ONNX_PATH = ONNX_PATH+'/evo_onnx/evoformer.onnx'
+EVO_VINO_PATH=OPENVINO_PATH+'/evo_vino/model.xml'
+DIFFUSION_OPENVINO_PATH=OPENVINO_PATH+'/diffusion_head_openvino/model.xml'
 
 # Input and output paths.
 _JSON_PATH = flags.DEFINE_string(
@@ -110,7 +114,7 @@ _USE_DIFFUSION_VINO = flags.DEFINE_bool(
 )
 _DIFFUSION_VINO_PATH = flags.DEFINE_string(
     'diffusion_vino_path',
-    OPENVINO_PATH,
+    DIFFUSION_OPENVINO_PATH,
     'Path to the model to use for inference.',
 )
 
@@ -141,7 +145,7 @@ _NUM_THREADS = flags.DEFINE_integer(
 
 _NUM_RECYCLES = flags.DEFINE_integer(
     'num_recycles',
-    10,
+    24,
     'Number of recycles to use during inference.',
     lower_bound=1,
 )
@@ -191,14 +195,10 @@ _CONFIDENCE_DP = flags.DEFINE_bool(
     True,
     'Whether to run inference on the cpu.',
 )
+
+
 import torch.distributed as dist
 def setup(rank, world_size,master_addr='192.168.10.1', master_port='8082'):
-    os.environ['MASTER_ADDR'] = master_addr
-    os.environ['MASTER_PORT'] = master_port
-
-    # 配置Gloo使用IB传输
-    # os.environ['GLOO_DEVICE_TRANSPORT'] = 'ibverbs'  # 使用IB Verbs API
-    # os.environ['GLOO_SOCKET_IFNAME'] = 'ib0'  # 指定InfiniBand网络接口
 
     if _CPU_INFERENCE.value:
         print("start to set up multi cpu","rank:",rank,"world_size:",world_size)
@@ -295,10 +295,18 @@ class ModelRunner:
             if _CPU_FLUSH_DENORM_OPT:
                 torch.set_flush_denormal(True)
             # self._model = torch.compile(self._model,backend="ipex")
-            
+
+        #将模型迁移到cuda
         if _CPU_INFERENCE.value == False:
-            torch.cuda.set_device(rank)
-            self._model = self._model.to(f"cuda:{rank}")
+            if rank>0:
+                torch.cuda.set_device(rank)
+            device=f"cuda:{rank}"
+            self._model = self._model.to(device=device)
+            self.target_feat = self.target_feat.to(device=device)
+            self.confidence.confidence_head=self.confidence.confidence_head.to(device=device)
+            self.diffusion.pre_model=self.diffusion.pre_model.to(device=device)
+            self.diffusion.diffusion_head=self.diffusion.diffusion_head.to(device=device)
+            self.evoformer.evoformer=self.evoformer.evoformer.to(device=device)
             print("Applying CUDA optimizations...")
             # print(torch._dynamo.list_backends())
             # self._model = torch.compile(self._model,backend="inductor",dynamic=False)
@@ -322,17 +330,21 @@ class ModelRunner:
         featurised_example['deletion_mean'] = featurised_example['deletion_mean'].to(
             dtype=torch.float32)
 
+        amp_type="cpu"
+        device="cpu"
         if _CPU_INFERENCE.value==False:
-            if True:
-                with torch.amp.autocast(device_type="cuda", dtype=torch.bfloat16):
-                    print("Running inference with AMP on GPU...")
-                    result = self._model(featurised_example)
-                    result['__identifier__'] = self._model.__identifier__.numpy()
-
-        else: # CPU Inference
-            if _CPU_AMP_OPT:
-                # with torch.amp.autocast("cpu", dtype=torch.bfloat16):
-                    print("Running inference with AMP on CPU...")
+            amp_type="cuda"
+            device="cuda:0"
+        #     if True:
+        #         with torch.amp.autocast(device_type="cuda", dtype=torch.bfloat16):
+        #             print("Running inference with AMP on GPU...")
+        #             result = self._model(featurised_example)
+        #             result['__identifier__'] = self._model.__identifier__.numpy()
+        #
+        # else: # CPU Inference
+        if _CPU_AMP_OPT:
+                with torch.amp.autocast(amp_type, dtype=torch.bfloat16):
+                    # print("Running inference with AMP on CPU...")
                     batch = feat_batch.Batch.from_data_dict(featurised_example)
                     time1=time.time()
                     seq_mask = batch.token_features.mask.contiguous()
@@ -364,37 +376,30 @@ class ModelRunner:
                         ref_atom_name_chars=batch.ref_structure.atom_name_chars,
                         ref_space_uid=batch.ref_structure.ref_space_uid
                     ).contiguous()
-
-                    attn_mask_seq = get_attn_mask(mask=seq_mask, dtype=torch.bfloat16, device='cpu', num_heads=16,
+                    # print('target_feat: ',target_feat.device)
+                    attn_mask_seq = get_attn_mask(mask=seq_mask, dtype=torch.bfloat16, device=device, num_heads=16,
                                                   seq_len=num_tokens, batch_size=1).contiguous()
                     pair_mask = seq_mask[:, None] * seq_mask[None, :]
 
                     attn_mask_4 = get_attn_mask(mask=pair_mask, dtype=torch.bfloat16,
-                                                              device='cpu',
+                                                              device=device,
                                                               batch_size=num_tokens,
                                                               num_heads=4, seq_len=num_tokens).contiguous()
-                    # print("zero count",(seq_mask == False).sum().item())
 
-                    # print(pair_mask[0])
-                    #seq_mask shape torch.Size([1491])
-                    # print("seq mask pair mask shape ",pair_mask.shape,seq_mask.shape)
-                    # print("zero count",(pair_mask == False).sum().item())
                     if(seq_mask==False).sum().item() !=0:
                         print('zero count of seq_mask is not zero,please cancel bucket:',(seq_mask==False).sum().item() !=0)
                         exit(0)
                     # attn_mask_4=pair_mask.to(torch.bool)[:, None, None, :].expand(-1,4,-1,-1).contiguous()
-                    pair_mask = pair_mask.to(dtype=torch.bool).contiguous()
+                    pair_mask = pair_mask.to(dtype=torch.bool,device=device).contiguous()
 
                     rel_feat = preprocess.get_rel_feat(token_index=batch.token_features.token_index,
                                                        residue_index=batch.token_features.residue_index,
                                                        asym_id=batch.token_features.asym_id,
                                                        entity_id=batch.token_features.entity_id,
-                                                       sym_id=batch.token_features.sym_id, dtype=target_feat.dtype)
-                    # print('real_feat',rel_feat.shape)
+                                                       sym_id=batch.token_features.sym_id, dtype=target_feat.dtype,device=device)
                     if SAVE_EVO_ONNX:
                         self.evoformer.getOnnxModel(batch,target_feat,EVO_ONNX_PATH)
 
-                    # print("create target feat cost time %.2f seconds"% (time.time()-time1))
                     time1=time.time()
                     # with profile(activities=[ProfilerActivity.CPU],
                                  # profile_memory=False, record_shapes=False) as prof:
@@ -416,13 +421,13 @@ class ModelRunner:
                     pred_dense_atom_mask = batch.predicted_structure_info.atom_mask
 
                     positions = torch.zeros((_NUM_DIFFUSION_SAMPLES.value,) + pred_dense_atom_mask.shape + (3,),
-                                            device='cpu', dtype=torch.float32).contiguous()
+                                            device=amp_type, dtype=torch.float32).contiguous()
 
                     if SAVE_ONNX:
                         self.diffusion.getOnnxModel(batch=batch,
                                             single=embeddings['single'], pair=embeddings['pair'],
                                             target_feat=target_feat,real_feat=rel_feat,
-                                            save_path=ONNX_PATH)
+                                            save_path=DIFFUSION_OPENVINO_PATH)
 
 
                     sample_mask = batch.predicted_structure_info.atom_mask
@@ -487,10 +492,8 @@ class ModelRunner:
 
                         # confidence_output_per_sample.append(confidence_output)
                         print("confidence output time: ", time.time() - time1)
-                    # confidence_output = {}
-                    # for key in confidence_output_per_sample[0]:
-                    #     confidence_output[key] = torch.stack(
-                    #         [sample[key] for sample in confidence_output_per_sample], dim=0)
+
+
                     distogram=self._model(featurised_example,embeddings,positions)
                     # time1=time.time()
                     for pos_wait in pos_waits:
@@ -499,6 +502,7 @@ class ModelRunner:
                     final_dense_atom_mask = torch.tile(sample_mask[None], (_NUM_DIFFUSION_SAMPLES.value, 1, 1))
                     samples = {'atom_positions': positions, 'mask': final_dense_atom_mask}
 
+                    #confidence的分布式结果收集
                     if _CONFIDENCE_DP.value and _WOLRD_SIZE.value>1:
                         slice_sizes = [
                             num_tokens * 24,  # predicted_lddt
@@ -548,19 +552,12 @@ class ModelRunner:
                                 'tmscore_adjusted_pae_global': tmscore_adjusted_pae_global_all,
                                 'tmscore_adjusted_pae_interface': tmscore_adjusted_pae_interface_all,
                     }
-
-
-
                     result={
                             'diffusion_samples': samples,
                             'distogram': distogram,
                             **confidence_output,
                     }
                     result['__identifier__'] = self._model.__identifier__.numpy()
-            else:
-                print("Running inference without AMP on CPU...")
-                result = self._model(featurised_example)
-                result['__identifier__'] = self._model.__identifier__.numpy()
 
         result = pytree.tree_map_only(
             torch.Tensor,

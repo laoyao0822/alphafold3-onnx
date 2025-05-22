@@ -151,9 +151,6 @@ class AtomCrossAttEncoder(nn.Module):
             layout_axes=(-2,),
         )
 
-
-
-
         keys_single_cond = atom_layout.convertV2(
             # batch.atom_cross_att.queries_to_keys,
             acat_q_to_k_gather_idxs,

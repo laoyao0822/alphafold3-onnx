@@ -118,7 +118,7 @@ def create_relative_encodingV2(
     # rel_feats.append(rel_chain)
     return torch.concatenate(rel_feats, dim=-1)
 
-def get_rel_feat(token_index,residue_index,asym_id,entity_id,sym_id,dtype):
+def get_rel_feat(token_index,residue_index,asym_id,entity_id,sym_id,dtype,device='cpu'):
     rel_feat = featurization.create_relative_encodingV2(
         token_index=token_index,
         residue_index=residue_index,
@@ -127,5 +127,5 @@ def get_rel_feat(token_index,residue_index,asym_id,entity_id,sym_id,dtype):
         sym_id=sym_id,
         max_relative_idx=32,
         max_relative_chain=2
-    ).to(dtype=dtype)
+    ).to(dtype=dtype,device=device)
     return rel_feat
