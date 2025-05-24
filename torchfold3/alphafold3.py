@@ -458,70 +458,68 @@ class AlphaFold3(nn.Module):
                 ,embeddings,positions
                 ) :
         batch = feat_batch.Batch.from_data_dict(batch)
-        # num_res = batch.num_res
-        # #target_feat torch.Size([37, 447])
-        # time1 = time.time()
-        # target_feat = self.create_target_feat_embedding(batch)
-        # print("create target feat cost time:", time.time() - time1)
-        # # return target_feat
-        # print("target_feat", target_feat.shape)
-        # target_feat1=self.create_target_feat_embedding(batch)
-        # embeddings = {
-        #     'pair': torch.zeros(
-        #         [num_res, num_res, self.evoformer_pair_channel], device=target_feat.device,
-        #         dtype=torch.float32,
-        #     ),
-        #     'single': torch.zeros(
-        #         [num_res, self.evoformer_seq_channel], dtype=torch.float32, device=target_feat.device,
-        #     ),
-        #     'target_feat': target_feat,  # type: ignore
-        # }
-        # time1 = time.time()
-        # for _ in range(self.num_recycles + 1):
-        #     # ref:
-        #     # Number of recycles is number of additional forward trunk passes.
-        #     # num_iter = self.config.num_recycles + 1
-        #     # embeddings, _ = hk.fori_loop(0, num_iter, recycle_body, (embeddings, key))
-        #
-        #     embeddings = self.evoformer(
-        #         batch=batch,
-        #         prev=embeddings,
-        #         target_feat=target_feat
-        #     )
-        # # print("evoformer cost time:",time.time()-time1)
-        # c_pair=embeddings['pair'].contiguous()
-        # c_single=embeddings['single'].contiguous()
-        # # print("dtype",c_pair.dtype,c_single.dtype)
-        # # print("shape",c_pair.shape,c_single.shape)
-        #
+        num_res = batch.num_res
+        #target_feat torch.Size([37, 447])
+        time1 = time.time()
+        target_feat = self.create_target_feat_embedding(batch)
+        print("create target feat cost time:", time.time() - time1)
+        # return target_feat
+        embeddings = {
+            'pair': torch.zeros(
+                [num_res, num_res, self.evoformer_pair_channel], device=target_feat.device,
+                dtype=torch.float32,
+            ),
+            'single': torch.zeros(
+                [num_res, self.evoformer_seq_channel], dtype=torch.float32, device=target_feat.device,
+            ),
+            'target_feat': target_feat,  # type: ignore
+        }
+        time1 = time.time()
+        for _ in range(self.num_recycles + 1):
+            # ref:
+            # Number of recycles is number of additional forward trunk passes.
+            # num_iter = self.config.num_recycles + 1
+            # embeddings, _ = hk.fori_loop(0, num_iter, recycle_body, (embeddings, key))
+
+            embeddings = self.evoformer(
+                batch=batch,
+                prev=embeddings,
+                target_feat=target_feat
+            )
+        # print("evoformer cost time:",time.time()-time1)
+        c_pair=embeddings['pair'].contiguous()
+        c_single=embeddings['single'].contiguous()
+        # print("dtype",c_pair.dtype,c_single.dtype)
+        # print("shape",c_pair.shape,c_single.shape)
+
         # for send_rank in range(1,min(self.world_size,self.num_samples)):
         #     print("send",send_rank)
         #     dist.send(tensor=c_pair, dst=send_rank)
         #     dist.send(tensor=c_single, dst=send_rank)
 
-        # sample_mask = batch.predicted_structure_info.atom_mask
-        # # samples = self._sample_diffusion(batch, embeddings)
-        # final_dense_atom_mask = torch.tile(sample_mask[None], (self.num_samples, 1, 1))
-        # samples={'atom_positions': positions, 'mask': final_dense_atom_mask}
-        # time2=time.time()
-        # confidence_output_per_sample = []
-        # print("positions shape:",positions.shape)
-        # positions_c=positions.clone()
-        # for sample_dense_atom_position in samples['atom_positions']:
-        #     print("sample_dense_atom_position", sample_dense_atom_position.shape)
-        #     confidence_output_per_sample.append(self.confidence_head(
-        #         dense_atom_positions=sample_dense_atom_position,
-        #         embeddings=embeddings,
-        #         seq_mask=batch.token_features.mask,
-        #         token_atoms_to_pseudo_beta=batch.pseudo_beta_info.token_atoms_to_pseudo_beta,
-        #         asym_id=batch.token_features.asym_id
-        #     ))
-        # print("confidence_head cost time:",time.time()-time2)
-        # print("confidence_output_per_sample:",confidence_output_per_sample[0].shape)
+        sample_mask = batch.predicted_structure_info.atom_mask
+        # samples = self._sample_diffusion(batch, embeddings)
+        final_dense_atom_mask = torch.tile(sample_mask[None], (self.num_samples, 1, 1))
+        samples={'atom_positions': positions, 'mask': final_dense_atom_mask}
+        time2=time.time()
+        confidence_output_per_sample = []
+        print("positions shape:",positions.shape)
+        positions_c=positions.clone()
+        for sample_dense_atom_position in samples['atom_positions']:
+            print("sample_dense_atom_position", sample_dense_atom_position.shape)
+            confidence_output_per_sample.append(self.confidence_head(
+                dense_atom_positions=sample_dense_atom_position,
+                embeddings=embeddings,
+                seq_mask=batch.token_features.mask,
+                token_atoms_to_pseudo_beta=batch.pseudo_beta_info.token_atoms_to_pseudo_beta,
+                asym_id=batch.token_features.asym_id
+            ))
+        print("confidence_head cost time:",time.time()-time2)
+        print("confidence_output_per_sample:",confidence_output_per_sample[0].shape)
         confidence_output = {}
-        # for key in confidence_output_per_sample[0]:
-        #     confidence_output[key] = torch.stack(
-        #         [sample[key] for sample in confidence_output_per_sample], dim=0)
+        for key in confidence_output_per_sample[0]:
+            confidence_output[key] = torch.stack(
+                [sample[key] for sample in confidence_output_per_sample], dim=0)
         #
         # if torch.allclose(positions_c, positions, rtol=1e-5):
         #     print("positions 张量没有变化")
@@ -530,15 +528,15 @@ class AlphaFold3(nn.Module):
         # exit(0)
 
         distogram = self.distogram_head(batch, embeddings)
-        return distogram
+        # return distogram
 
         # if torch.allclose(target_feat_clone, embeddings['target_feat'], rtol=1e-5):
         #     print("target_feat 张量没有变化")
         # else:
         #     print("target_feat 张量发生了变化")
 
-        # return {
-        #     'diffusion_samples': samples,
-        #     'distogram': distogram,
-        #     **confidence_output,
-        # }
+        return {
+            'diffusion_samples': samples,
+            'distogram': distogram,
+            **confidence_output,
+        }

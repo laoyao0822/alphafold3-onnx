@@ -42,6 +42,10 @@ from target_feat.misc import params as target_feat_params
 from evoformer.evoformerOne import EvoFormerOne
 from evoformer.evoformerOne import EvoformerVino
 from evoformer.misc import params as evoformer_params
+
+from distogram.network.head import DistogramHead
+from distogram.misc import params as distogram_params
+
 from confidenceWorker.confidence import ConfidenceOne
 from confidenceWorker.misc import params as confidence_params
 import time
@@ -232,17 +236,13 @@ class ModelRunner:
         rank = _RANK_.value
         if _WOLRD_SIZE.value>1:
             setup(_RANK_.value, _WOLRD_SIZE.value)
-        self._model = AlphaFold3(num_samples=_NUM_DIFFUSION_SAMPLES.value)
-        self._model.eval()
-
-        print('loading the model parameters...')
-        import_jax_weights_(self._model, model_dir)
 
         #import target feat
         print('import target feat')
         self.target_feat=TargetFeat()
         self.target_feat.eval()
         target_feat_params.import_jax_weights_(self.target_feat,model_dir)
+
         if USE_EVO_VINO:
             print('import evoformer vino')
             self.evoformer=EvoformerVino()
@@ -271,6 +271,10 @@ class ModelRunner:
         self.confidence=ConfidenceOne()
         confidence_params.import_jax_weights_(self.confidence,model_dir)
         self.confidence.confidence_head.eval()
+        self.distogram=DistogramHead()
+        self.distogram.eval()
+        distogram_params.import_jax_weights_(self.distogram,model_dir)
+
         # Apply IPEX optimization for CPU if device is CPU
         if _CPU_INFERENCE.value:
             print("mkl",torch.backends.mkl.is_available(),"onednn",torch.backends.mkldnn.is_available())
@@ -279,8 +283,6 @@ class ModelRunner:
                 import intel_extension_for_pytorch as ipex
                 # import openvino as ov
                 print("Applying Intel Extension for PyTorch optimizations...")
-                self._model = ipex.optimize(self._model,weights_prepack=False,optimize_lstm=True,auto_kernel_selection=True,dtype=torch.bfloat16)
-
                 self.target_feat = ipex.optimize(self.target_feat,weights_prepack=False,optimize_lstm=True,auto_kernel_selection=True,dtype=torch.bfloat16)
                 self.evoformer.evoformer = ipex.optimize(self.evoformer.evoformer,weights_prepack=False,optimize_lstm=True,auto_kernel_selection=True,dtype=torch.bfloat16)
 
@@ -290,7 +292,7 @@ class ModelRunner:
                     self.diffusion.diffusion_head = ipex.optimize(self.diffusion.diffusion_head,weights_prepack=False,optimize_lstm=True,auto_kernel_selection=True,dtype=torch.bfloat16)
                 # self.diffusion.diffusion_head=torch.compile(self.diffusion.diffusion_head,backend="ipex")
                 self.confidence.confidence_head=ipex.optimize(self.confidence.confidence_head,weights_prepack=False,optimize_lstm=True,auto_kernel_selection=True,dtype=torch.bfloat16)
-
+                self.distogram=ipex.optimize(self.distogram,weights_prepack=False,optimize_lstm=True,auto_kernel_selection=True,dtype=torch.bfloat16)
 
             if _CPU_FLUSH_DENORM_OPT:
                 torch.set_flush_denormal(True)
@@ -301,12 +303,12 @@ class ModelRunner:
             if rank>0:
                 torch.cuda.set_device(rank)
             device=f"cuda:{rank}"
-            self._model = self._model.to(device=device)
             self.target_feat = self.target_feat.to(device=device)
             self.confidence.confidence_head=self.confidence.confidence_head.to(device=device)
             self.diffusion.pre_model=self.diffusion.pre_model.to(device=device)
             self.diffusion.diffusion_head=self.diffusion.diffusion_head.to(device=device)
             self.evoformer.evoformer=self.evoformer.evoformer.to(device=device)
+            self.distogram=self.distogram.to(device=device)
             print("Applying CUDA optimizations...")
             # print(torch._dynamo.list_backends())
             # self._model = torch.compile(self._model,backend="inductor",dynamic=False)
@@ -407,10 +409,7 @@ class ModelRunner:
                         pair_s=embeddings['pair'].to(dtype=torch.bfloat16).contiguous()
                         dist.broadcast(single_s, src=0,async_op=True)
                         dist.broadcast(pair_s, src=0,async_op=True)
-                    # if _RANK_.value==0:
-                    #     fan_intergate.set_fan("1",25)
 
-                    # print('broadcast time',time.time()-time1)
                     pred_dense_atom_mask = batch.predicted_structure_info.atom_mask
 
                     positions = torch.zeros((_NUM_DIFFUSION_SAMPLES.value,) + pred_dense_atom_mask.shape + (3,),
@@ -484,8 +483,11 @@ class ModelRunner:
                         # confidence_output_per_sample.append(confidence_output)
                         print("confidence output time: ", time.time() - time1)
 
-
-                    distogram=self._model(featurised_example,embeddings,positions)
+                    bin_edges,contact_probs=self.distogram(embeddings['pair'].clone())
+                    distogram={
+                            'bin_edges': bin_edges,
+                            'contact_probs': contact_probs,
+                    }
                     # time1=time.time()
                     for pos_wait in pos_waits:
                         pos_wait.wait()
@@ -548,7 +550,7 @@ class ModelRunner:
                             'distogram': distogram,
                             **confidence_output,
                     }
-                    result['__identifier__'] = self._model.__identifier__.numpy()
+                    result['__identifier__'] = self.target_feat.__identifier__.numpy()
 
         result = pytree.tree_map_only(
             torch.Tensor,
