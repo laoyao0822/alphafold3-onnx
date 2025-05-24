@@ -135,13 +135,10 @@ def dot_product_attention_sdpa(
         q: torch.Tensor,
         k: torch.Tensor,
         v: torch.Tensor,
-        attn_mask,
         bias: Optional[torch.Tensor] = None
 ) -> torch.Tensor:
     bias=bias.unsqueeze(0).contiguous()
-    # sdpa_mask=attn_mask+bias
-    # print('q.shape',q.shape,'k.shape',k.shape,'v.shape',v.shape,'attn_mask.shape',attn_mask.shape)
-    # print("sdpa execute")
+
     return torch.nn.functional.scaled_dot_product_attention(
         q, k, v,
         attn_mask=bias,  # 合并后的掩码和偏置

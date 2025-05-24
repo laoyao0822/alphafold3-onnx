@@ -377,20 +377,13 @@ class ModelRunner:
                         ref_space_uid=batch.ref_structure.ref_space_uid
                     ).contiguous()
                     # print('target_feat: ',target_feat.device)
-                    attn_mask_seq = get_attn_mask(mask=seq_mask, dtype=torch.bfloat16, device=device, num_heads=16,
-                                                  seq_len=num_tokens, batch_size=1).contiguous()
-                    pair_mask = seq_mask[:, None] * seq_mask[None, :]
 
-                    attn_mask_4 = get_attn_mask(mask=pair_mask, dtype=torch.bfloat16,
-                                                              device=device,
-                                                              batch_size=num_tokens,
-                                                              num_heads=4, seq_len=num_tokens).contiguous()
 
                     if(seq_mask==False).sum().item() !=0:
                         print('zero count of seq_mask is not zero,please cancel bucket:',(seq_mask==False).sum().item() !=0)
                         exit(0)
                     # attn_mask_4=pair_mask.to(torch.bool)[:, None, None, :].expand(-1,4,-1,-1).contiguous()
-                    pair_mask = pair_mask.to(dtype=torch.bool,device=device).contiguous()
+                    # pair_mask = pair_mask.to(dtype=torch.bool,device=device).contiguous()
 
                     rel_feat = preprocess.get_rel_feat(token_index=batch.token_features.token_index,
                                                        residue_index=batch.token_features.residue_index,
@@ -403,7 +396,7 @@ class ModelRunner:
                     time1=time.time()
                     # with profile(activities=[ProfilerActivity.CPU],
                                  # profile_memory=False, record_shapes=False) as prof:
-                    embeddings=self.evoformer.forward(batch,target_feat,attn_mask_4=attn_mask_4, pair_mask=pair_mask,attn_mask_seq=attn_mask_seq)
+                    embeddings=self.evoformer.forward(batch,target_feat)
                     # print(prof.key_averages().table(sort_by="cpu_time_total", row_limit=500))
                     # exit(0)
                     print("Evoformer took %.2f seconds" % (time.time() - time1))
@@ -476,9 +469,7 @@ class ModelRunner:
                          tmscore_adjusted_pae_interface) = self.confidence.forward(batch=batch,
                                                                                    embeddings=embeddings,
                                                                                    positions=positions[i],
-                                                                                   attn_seq_mask=attn_mask_seq,
-                                                                                   pair_mask=pair_mask,
-                                                                                   attn_pair_mask=attn_mask_4)
+                                                                                   )
                         predicted_experimentally_resolved = predicted_experimentally_resolved.to(
                             dtype=torch.float32).contiguous()
 

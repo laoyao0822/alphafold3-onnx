@@ -53,7 +53,7 @@ class TriangleMultiplication(nn.Module):
         # )
     shard_transition_blocks: bool = True
 
-    def forward(self, pair: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+    def forward(self, pair: torch.Tensor) -> torch.Tensor:
         """
         Args:
             pair (torch.Tensor): [N_token, N_token, c_pair]
@@ -67,8 +67,6 @@ class TriangleMultiplication(nn.Module):
 
         projection = self.projection(pair)
         projection = projection.permute(2, 0, 1)
-        if mask is not None:
-            projection *= mask[None, ...]
 
         gate = self.gate(pair)
         gate = gate.permute(2, 0, 1)

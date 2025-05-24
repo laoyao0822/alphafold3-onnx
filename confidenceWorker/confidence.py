@@ -24,17 +24,13 @@ class ConfidenceOne():
         self.num_samples=5
 
     def forward(self, batch
-            ,embeddings,positions
-            ,attn_seq_mask,
-            pair_mask,
-            attn_pair_mask,
+            ,embeddings,positions,
                 ) :
         # batch = feat_batch.Batch.from_data_dict(batch)
 
 
         # time2=time.time()
         # print("positions shape:",positions.shape)
-
             # print("sample_dense_atom_position", sample_dense_atom_position.shape)
         (predicted_lddt,predicted_experimentally_resolved,full_pde,average_pde,
             full_pae,tmscore_adjusted_pae_global,tmscore_adjusted_pae_interface)=self.confidence_head(
@@ -44,27 +40,11 @@ class ConfidenceOne():
                 pair=embeddings['pair'],
                 target_feat=embeddings['target_feat'],
                 seq_mask=batch.token_features.mask,
-                attn_seq_mask=attn_seq_mask,
-                pair_mask=pair_mask,
-                attn_pair_mask=attn_pair_mask,
-                # token_atoms_to_pseudo_beta=batch.pseudo_beta_info.token_atoms_to_pseudo_beta,
+
                 ta_to_pb_gather_idxs=batch.pseudo_beta_info.token_atoms_to_pseudo_beta.gather_idxs,
                 ta_to_pb_gather_mask=batch.pseudo_beta_info.token_atoms_to_pseudo_beta.gather_mask,
                 asym_id=batch.token_features.asym_id
             )
 
-
-
-        # confidence_output={
-        #         'predicted_lddt': predicted_lddt,
-        #         'predicted_experimentally_resolved': predicted_experimentally_resolved,
-        #         'full_pde': full_pde,
-        #         'average_pde': average_pde,
-        #         'full_pae':full_pae,
-        #         'tmscore_adjusted_pae_global': tmscore_adjusted_pae_global,
-        #         'tmscore_adjusted_pae_interface': tmscore_adjusted_pae_interface
-        #     }
-        # print("confidence_head cost time:",time.time()-time2)
-        # print("confidence_output_per_sample:",confidence_output_per_sample[0].shape)
         return (predicted_lddt,predicted_experimentally_resolved,full_pde,average_pde,
             full_pae,tmscore_adjusted_pae_global,tmscore_adjusted_pae_interface)

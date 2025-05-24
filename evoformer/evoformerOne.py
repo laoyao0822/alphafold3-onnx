@@ -137,21 +137,16 @@ class Evoformer(nn.Module):
 
     def _embed_process_msa(
         self,
-        # msa_batch: features.MSA,
         rows, mask, deletion_matrix,
         pair_activations: torch.Tensor,
         target_feat: torch.Tensor,
-        pair_mask: Optional[torch.Tensor] = None,
-        pair_mask_attn: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         """Processes MSA and returns updated pair activations."""
         dtype = pair_activations.dtype
         rows, mask, deletion_matrix= featurization.shuffle_msa_runcate(rows, mask, deletion_matrix,num_msa=self.num_msa)
 
         msa_mask = mask.to(dtype=dtype).contiguous()
-        # time1 = time.time()
         msa_feat = self.create_msa_feat(rows,deletion_matrix).to(dtype=dtype).contiguous()
-        # print("created msa feat:", time.time() - time1)
         msa_activations = self.msa_activations(msa_feat).contiguous()
         msa_activations += self.extra_msa_target_feat(target_feat)[None].contiguous()
 
@@ -162,8 +157,6 @@ class Evoformer(nn.Module):
                 msa=msa_activations,
                 pair=pair_activations,
                 msa_mask=msa_mask,
-                # pair_mask=pair_mask,
-                # pair_mask_attn=pair_mask_attn,
             )
 
         return pair_activations
@@ -180,14 +173,6 @@ class Evoformer(nn.Module):
         template_aatype, template_atom_positions, template_atom_mask,
         rel_feat,
     ) :
-        # target_feat_c=target_feat.clone()
-        # turn on when seq_mask is not all
-        # attn_mask_4=None
-        # pair_mask=None
-        # attn_mask_seq=None
-        # pair=prev['pair']
-        # single=prev['single']
-        # num_tokens = msa.shape[1]
 
         pair_activations = self.prev_embedding(
             self.prev_embedding_layer_norm(pair))
@@ -195,13 +180,11 @@ class Evoformer(nn.Module):
         pair_activations += self._seq_pair_embedding(
             target_feat
         )
-        # pair_activations = self._relative_encoding(batch, pair_activations)
 
         #_relative_encoding
         pair_activations += self.position_activations(rel_feat)
 
         pair_activations += self.bond_embedding(contact_matrix)
-        # pair_mask_c=pair_mask.clone()
 
         single = self.prev_single_embedding(
             self.prev_single_embedding_layer_norm(single)).to(dtype=pair.dtype)
@@ -210,37 +193,24 @@ class Evoformer(nn.Module):
 
         pair_activations=pair_activations.to(dtype=pair.dtype).contiguous()
 
-        # time1=time.time()
         pair_activations = self._embed_template_pair(
             asym_id=asym_id, template_aatype=template_aatype,
             template_atom_positions=template_atom_positions, template_atom_mask=template_atom_mask,
             pair_activations=pair_activations,
-            # pair_mask=pair_mask,
-            # attn_mask=attn_mask_4
         ).contiguous()
 
-        # print('_embed_template_pair cost',time.time()-time1)
 
-        # print("_embed_template_pair over")
-        # time1=time.time()
         pair_activations = self._embed_process_msa(
-            # msa_batch=batch.msa,
             msa, msa_mask, deletion_matrix,
             pair_activations=pair_activations,
             target_feat=target_feat,
-            # pair_mask=pair_mask,
-            # pair_mask_attn=attn_mask_4,
         ).contiguous()
 
-        # print('_embed_process_msa cost',time.time()-time1)
 
         single=single.contiguous()
-        # time1=time.time()
-        # print("_embed_process_msa over")
         for pairformer_b in self.trunk_pairformer:
             pair_activations, single = pairformer_b(
                 pair_activations, single=single)
-        # print('pairformer_b cost',time.time()-time1)
 
         return single,pair_activations
 
@@ -279,12 +249,6 @@ class EvoFormerOne():
             num_tokens=num_res,
         )
         seq_mask=batch.token_features.mask
-        # attn_mask_seq = get_attn_mask(mask=seq_mask, dtype=pair.dtype, device=pair.device,num_heads=16,seq_len=num_res,batch_size=1)
-        # print(attn_mask_seq.shape)
-        # from onnxscript.rewriter import rewrite
-
-        # ten_length = 10 * seq_len
-
         edge_number = torch.export.Dim('edge_number', min=10, max=1500)
         output_names = ["single_out", "pair_out"]
         ordered_keys=['single', 'pair', 'target_feat',
@@ -343,7 +307,6 @@ class EvoFormerOne():
                           'deletion_matrix': {1: seq_len},
 
                           'asym_id': {0: seq_len},
-
                           # 'seq_mask': {0: seq_len},
                           'contact_matrix':{0: seq_len,1: seq_len},
                           # 模板相关
@@ -359,14 +322,10 @@ class EvoFormerOne():
 
 
     def forward(self, batch,target_feat
-                ,attn_mask_4,pair_mask,attn_mask_seq,
                 # pair_activations,pair_mask,
 
                 ) -> dict[str, torch.Tensor]:
-        # batch = feat_batch.Batch.from_data_dict(batch)
         num_res = batch.num_res
-        #target_feat torch.Size([37, 447])
-        # target_feat1=self.create_target_feat_embedding(batch)
         pair= torch.zeros(
                 [num_res, num_res, self.evoformer_pair_channel], device=target_feat.device,
                 dtype=torch.bfloat16,
@@ -414,20 +373,10 @@ class EvoFormerOne():
                 template_atom_positions = template_atom_positions,
                 template_atom_mask = batch.templates.atom_mask,
                 rel_feat=rel_feat,
-                # pair_activations = pair_activations,
-                # pair_mask=pair_mask,
-                # attn_mask_4=attn_mask_4,
-                # attn_mask_seq=attn_mask_seq,
-                # prev=embeddings,
+
             )
             print("evo one cost time:", time.time()-time1)
-            #控制风扇
-            # if recycle==self.num_recycles:
-            #     fan_intergate.set_fan(1,25)
-            # exit(0)
-        # print("dtype",c_pair.dtype,c_single.dtype)
-        # print("shape",c_pair.shape,c_single.shape)
-        # return embeddings
+
         output = {
             'single': single,
             'pair': pair,
@@ -446,12 +395,6 @@ class EvoformerVino():
 
     def initOpenvinoModel(self,openvino_path):
         self.core = ov.Core()
-        # self.core.set_property(
-        # "CPU",
-        #     {   properties.hint.execution_mode: properties.hint.ExecutionMode.PERFORMANCE,
-        #         },
-        #     )
-        # self.core.set_property("CPU",)
         cpu_optimization_capabilities =self.core.get_property("CPU","OPTIMIZATION_CAPABILITIES")
         print(cpu_optimization_capabilities)
 
@@ -463,10 +406,6 @@ class EvoformerVino():
             properties.inference_num_threads: 119,
             properties.hint.inference_precision: 'bf16',
             properties.intel_cpu.denormals_optimization:True,
-            # properties.hint.ModelDistributionPolicy:"TENSOR_PARALLEL",
-            # properties.hint.enable_cpu_pinning(): False,
-            # properties.hint.execution_mode: properties.hint.ExecutionMode.PERFORMANCE,
-            # properties.hint.enable_hyper_threading(): False
             # properties.num_streams:2,
             # "CPU_THREADS_NUM": "60",
             # "CPU_BIND_THREAD": "YES",
@@ -478,16 +417,11 @@ class EvoformerVino():
         )
 
     def forward(self, batch, target_feat_t) -> dict[str, torch.Tensor]:
-        # batch = feat_batch.Batch.from_data_dict(batch)
         num_res = batch.num_res
-        # target_feat torch.Size([37, 447])
 
         single=np.zeros(shape=[num_res, self.evoformer_seq_channel], dtype=np.float32)
         pair=np.zeros(shape=[num_res, num_res, self.evoformer_pair_channel], dtype=np.float32)
         target_feat=target_feat_t.numpy()
-        seq_mask = batch.token_features.mask
-        attn_mask_seq = get_attn_mask(mask=seq_mask, dtype=torch.float32, device='cpu', num_heads=16,
-                                      seq_len=num_res, batch_size=1)
 
         contact_matrix = preprocess.get_contact_matrix(
             gather_idxs_polymer_ligand=batch.polymer_ligand_bond_info.tokens_to_polymer_ligand_bonds.gather_idxs,
@@ -496,36 +430,31 @@ class EvoformerVino():
             tokens_to_ligand_ligand_bonds_gather_mask=batch.ligand_ligand_bond_info.tokens_to_ligand_ligand_bonds.gather_mask,
             num_tokens=num_res,
         ).numpy()
+
+        rel_feat = preprocess.get_rel_feat(token_index=batch.token_features.token_index,
+                                           residue_index=batch.token_features.residue_index,
+                                           asym_id=batch.token_features.asym_id,
+                                           entity_id=batch.token_features.entity_id,
+                                           sym_id=batch.token_features.sym_id, dtype=pair.dtype).contiguous()
         kwarg_inputs = {
             'target_feat': target_feat,
             'msa': batch.msa.rows.numpy(),
             'msa_mask': batch.msa.mask.numpy(),
             'deletion_matrix': batch.msa.deletion_matrix.numpy(),
-            'token_index': batch.token_features.token_index.numpy(),
-            'residue_index': batch.token_features.residue_index.numpy(),
             'asym_id': batch.token_features.asym_id.numpy(),
-            'entity_id': batch.token_features.entity_id.numpy(),
-            'sym_id': batch.token_features.sym_id.numpy(),
 
-            'seq_mask': batch.token_features.mask.numpy(),
             'contact_matrix': contact_matrix,
             'template_aatype': batch.templates.aatype.numpy(),
             'template_atom_positions': batch.templates.atom_positions.numpy(),
             'template_atom_mask': batch.templates.atom_mask.numpy(),
-
-            'attn_mask_seq':attn_mask_seq.numpy(),
+            'rel_feat':rel_feat,
         }
         infer_request = self.compiled_model.create_infer_request()
         single=ov.Tensor(single)
         pair=ov.Tensor(pair)
-        # time1=time.time()
         idx = 2
         # 将数据填充到输入张量
         for value in kwarg_inputs.values():
-            # input_names = input_key.names
-            # input_name = input_key.get_any_name()
-            # print("input_name", input_name," index" ,input_key.get_index())
-
             ov_tensor = ov.Tensor(value)
             # if input_name in inputs:
             infer_request.set_input_tensor(idx, ov_tensor)
@@ -539,9 +468,6 @@ class EvoformerVino():
             pair=infer_request.get_output_tensor(1)
             print('evo one cost time:', time.time()-time1)
 
-        # print("dtype",c_pair.dtype,c_single.dtype)
-        # print("shape",c_pair.shape,c_single.shape)
-        # return embeddings
         output = {
             'single': torch.from_numpy(single.data),
             'pair': torch.from_numpy(pair.data),

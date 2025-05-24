@@ -37,8 +37,6 @@ class PairformerBlock(nn.Module):
         """
         Args:
             n_heads (int, optional): number of head [for SelfAttention]. Defaults to 16.
-            c_z (int, optional): hidden dim [for pair embedding]. Defaults to 128.
-            c_s (int, optional):  hidden dim [for single embedding]. Defaults to 384.
             c_hidden_mul (int, optional): hidden dim [for TriangleMultiplicationOutgoing].
                 Defaults to 128.
             n_heads_pair (int, optional): number of head [for TriangleAttention]. Defaults to 4.
@@ -73,28 +71,22 @@ class PairformerBlock(nn.Module):
     def forward(
         self,
         pair: torch.Tensor,
-        pair_mask: torch.Tensor,
         single: Optional[torch.Tensor] = None,
-        seq_mask: Optional[torch.Tensor] = None,
-        pair_mask_attn: Optional[torch.Tensor] = None,
-
-    ) -> tuple[Optional[torch.Tensor], torch.Tensor]:
+    ) :
         """
         Forward pass of the PairformerBlock.
 
         Args:
             pair (torch.Tensor): [..., N_token, N_token, c_pair]
-            pair_mask (torch.Tensor): [..., N_token, N_token]
             single (torch.Tensor, optional): [..., N_token, c_single]
-            seq_mask (torch.Tensor, optional): [..., N_token]
 
         Returns:
             tuple[torch.Tensor, Optional[torch.Tensor]]: pair, single
         """
-        pair += self.triangle_multiplication_outgoing(pair, mask=pair_mask)
-        pair += self.triangle_multiplication_incoming(pair, mask=pair_mask)
-        pair += self.pair_attention1(pair, mask=pair_mask_attn)
-        pair += self.pair_attention2(pair, mask=pair_mask_attn)
+        pair += self.triangle_multiplication_outgoing(pair)
+        pair += self.triangle_multiplication_incoming(pair)
+        pair += self.pair_attention1(pair)
+        pair += self.pair_attention2(pair)
         pair += self.pair_transition(pair)
 
         if self.with_single is True:
@@ -104,7 +96,6 @@ class PairformerBlock(nn.Module):
             pair_logits = pair_logits.permute(2, 0, 1)
 
             single += self.single_attention_(single,
-                                             seq_mask,
                                              pair_logits=pair_logits)
 
             single += self.single_transition(single)

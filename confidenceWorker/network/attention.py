@@ -185,7 +185,7 @@ class GridSelfAttention(nn.Module):
 
 
 
-    def _attention(self, pair: torch.Tensor, mask: torch.Tensor):
+    def _attention(self, pair: torch.Tensor):
 
         q = self.q_projection(pair)
         k = self.k_projection(pair)
@@ -202,7 +202,7 @@ class GridSelfAttention(nn.Module):
         # weighted_avg = dot_product_attention(q, k, v,
         #                                       mask=mask,
         #                                       bias=bias)
-        weighted_avg = dot_product_attention_sdpa(q, k, v,attn_mask=mask,bias=bias)
+        weighted_avg = dot_product_attention_sdpa(q, k, v,bias=bias)
         weighted_avg = einops.rearrange(weighted_avg, 'b h n d -> b n (h d)')
 
         # weighted_avg1 shape torch.Size([107, 107, 64]) weighted_avg2 shape torch.Size([107, 107, 64])
@@ -222,11 +222,10 @@ class GridSelfAttention(nn.Module):
 
 
 
-    def forward(self, pair, mask):
+    def forward(self, pair):
         """
         Args:
             pair (torch.Tensor): [N_token, N_token, c_pair]
-            mask (torch.Tensor): [N_token, N_token]
         Returns:
             torch.Tensor: [N_token, N_token, c_pair]
         """
@@ -239,7 +238,7 @@ class GridSelfAttention(nn.Module):
 
         # seq_len = pair.shape[0]
 
-        pair = self._attention(pair, mask).contiguous()
+        pair = self._attention(pair).contiguous()
         # if self.c_pair==128:
         #     print("attention time:",time.time()-time1)
 
