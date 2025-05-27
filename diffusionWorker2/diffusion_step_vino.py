@@ -72,7 +72,7 @@ class diffusion_vino():
         self.pre_model.eval()
 
 
-    def initOpenvinoModel(self,openvino_path):
+    def initOpenvinoModel(self,openvino_path,num_threads):
         self.core = ov.Core()
 
         # 加载模型
@@ -80,7 +80,7 @@ class diffusion_vino():
         # 编译模型
         config = {
             properties.hint.performance_mode: properties.hint.PerformanceMode.LATENCY,
-            properties.inference_num_threads:48,
+            properties.inference_num_threads:num_threads,
             properties.hint.inference_precision: 'bf16',
             properties.intel_cpu.denormals_optimization: True,
         }

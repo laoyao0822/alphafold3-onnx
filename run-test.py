@@ -257,7 +257,7 @@ class ModelRunner:
         if USE_EVO_VINO:
             print('import evoformer vino')
             self.evoformer=EvoformerVino()
-            self.evoformer.initOpenvinoModel(EVO_VINO_PATH)
+            self.evoformer.initOpenvinoModel(EVO_VINO_PATH,num_threads=_NUM_THREADS.value)
         else:
             print('import evoformer torch')
             self.evoformer=EvoFormerOne()
@@ -267,7 +267,7 @@ class ModelRunner:
         if _USE_DIFFUSION_VINO.value:
             # self.diffusion=diffusion()
             self.diffusion=diffusion_vino()
-            self.diffusion.initOpenvinoModel(_DIFFUSION_VINO_PATH.value)
+            self.diffusion.initOpenvinoModel(_DIFFUSION_VINO_PATH.value,num_threads=_NUM_THREADS.value)
             self.diffusion.import_diffusion_head_params(model_dir)
 
             # self.diffusion.initOnnxModel(ONNX_PATH)
@@ -282,6 +282,8 @@ class ModelRunner:
         self.confidence=ConfidenceOne()
         confidence_params.import_jax_weights_(self.confidence,model_dir)
         self.confidence.confidence_head.eval()
+
+
         self.distogram=DistogramHead()
         self.distogram.eval()
         distogram_params.import_jax_weights_(self.distogram,model_dir)

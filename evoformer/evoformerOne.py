@@ -394,7 +394,7 @@ class EvoformerVino():
         self.evoformer_pair_channel = 128
         self.evoformer_seq_channel = 384
 
-    def initOpenvinoModel(self,openvino_path):
+    def initOpenvinoModel(self,openvino_path,num_threads):
         self.core = ov.Core()
         cpu_optimization_capabilities =self.core.get_property("CPU","OPTIMIZATION_CAPABILITIES")
         print(cpu_optimization_capabilities)
@@ -404,7 +404,7 @@ class EvoformerVino():
         # 编译模型
         config = {
             properties.hint.performance_mode: properties.hint.PerformanceMode.LATENCY,
-            properties.inference_num_threads: 119,
+            properties.inference_num_threads: num_threads,
             properties.hint.inference_precision: 'bf16',
             properties.intel_cpu.denormals_optimization:True,
             # properties.num_streams:2,
