@@ -128,7 +128,7 @@ _CPU_INFERENCE = flags.DEFINE_bool(
 # control the number of threads used by the data pipeline.
 _NUM_THREADS = flags.DEFINE_integer(
     'num_cpu_threads',
-    8,
+    16,
     'Number of threads to use for the data pipeline.',
 )
 
@@ -393,7 +393,8 @@ class ModelRunner:
                     num_tokens = seq_mask.shape[0]
                     print("start to process lenghth: ",num_tokens)
                     target_feat=self.target_feat(batch)
-                    # print('target_feat: ',target_feat.device)
+                    target_feat=target_feat.to(dtype=torch.bfloat16)
+                    # print('target_feat: ',target_feat.dtype)
                     if(seq_mask==False).sum().item() !=0:
                         print('zero count of seq_mask is not zero,please cancel bucket:',(seq_mask==False).sum().item() !=0)
                         exit(0)
@@ -404,9 +405,7 @@ class ModelRunner:
                                                        sym_id=batch.token_features.sym_id, dtype=target_feat.dtype,device=device)
                     time1=time.time()
                     embeddings=self.evoformer.forward(batch,target_feat)
-
                     print("Evoformer took %.2f seconds" % (time.time() - time1))
-
                     # time1=time.time()
                     if _WOLRD_SIZE.value>1:
                         single_s=embeddings['single'].to(dtype=torch.bfloat16).contiguous()
@@ -421,7 +420,6 @@ class ModelRunner:
 
 
                     sample_mask = batch.predicted_structure_info.atom_mask
-                    # samples = self._sample_diffusion(batch, embeddings)
 
                     num_samples=_NUM_DIFFUSION_SAMPLES.value
                     #准备接收数据
@@ -458,7 +456,6 @@ class ModelRunner:
                     #如果不使用confidence dp则需要执行完成所有的confidence
                     if not _CONFIDENCE_DP.value:
                         num_execute=5
-
                     for i in range(num_execute):
                         time1 = time.time()
                         (predicted_lddt, predicted_experimentally_resolved, full_pde, average_pde,

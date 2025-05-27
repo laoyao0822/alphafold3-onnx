@@ -271,6 +271,7 @@ class ConfidenceHead(nn.Module):
         def get_tmscore_adjusted_pae(num_interface_tokens, bin_centers, pae_probs):
             # Clip to avoid negative/undefined d0.
             clipped_num_res = torch.clamp(num_interface_tokens, min=19)
+            clipped_num_res=clipped_num_res.to(dtype=pae_probs.dtype)
             # Compute d_0(num_res) as defined by TM-score, eqn. (5) in
             # http://zhanglab.ccmb.med.umich.edu/papers/2004_3.pdf
             # Yang & Skolnick "Scoring function for automated
