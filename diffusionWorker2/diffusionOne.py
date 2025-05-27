@@ -9,27 +9,18 @@
 # https://github.com/google-deepmind/alphafold3/blob/main/WEIGHTS_TERMS_OF_USE.md
 import sys
 from typing import Tuple
-
-from numpy.lib.tests.test_format import dtype
-from openvino import properties
-import openvino as ov
 import torch
 import torch.nn as nn
 import time
-import torch.distributed as dist
-import onnxruntime as ort
-from openvino import Core
 import pathlib
 import diffusionWorker2.misc.params as params
 import diffusionWorker2.misc.feat_batch as feat_batch
 from diffusionWorker2.network import diffusion_head
-from diffusionWorker2.network.diffusion_step import DiffusionStep
-from diffusionWorker2.network.dot_product_attention import get_attn_mask
 from diffusionWorker2.network import atom_layout
 from diffusionWorker2.premodel.pre_diffusion import DiffusionHead as pre_diffusion
-
-import onnx
 import numpy as np
+
+
 class diffusion():
     def __init__(self, num_recycles: int = 10, num_samples: int = 5,diffusion_steps: int = 200):
         super(diffusion, self).__init__()
@@ -46,9 +37,6 @@ class diffusion():
         self.evoformer_pair_channel = 128
         self.evoformer_seq_channel = 384
         self.pre_model=pre_diffusion()
-
-
-
         self.conversion_time=0
 
     def import_diffusion_head_params(self,model_path: pathlib.Path):
@@ -213,7 +201,7 @@ class diffusion():
                           # dynamic_axes={'input': {}, 'output': {}},dynamo=True
                           )
         print("save onnx done:", save_path)
-        exit(0)
+        # exit(0)
 
 
     def _apply_denoising_step(
@@ -225,7 +213,6 @@ class diffusion():
 
             # single,
             # token_index, residue_index, asym_id, entity_id, sym_id,
-            seq_mask,
             pred_dense_atom_mask,
 
             queries_mask,
@@ -246,7 +233,6 @@ class diffusion():
             # batch,
     ):
         # pred_dense_atom_mask = batch.predicted_structure_info.atom_mask
-
         positions = diffusion_head.random_augmentation(
             positions=positions, mask=pred_dense_atom_mask
         ).contiguous()
@@ -348,7 +334,6 @@ class diffusion():
                 pair_act=pair_act, keys_mask=keys_mask, keys_single_cond=keys_single_cond,
                 # single=embeddings['single'], pair=embeddings['pair'], target_feat=embeddings['target_feat'],
                 trunk_single_cond=trunk_single_cond, pair_logits_cat=pair_logits_cat,
-                seq_mask=seq_mask,
                 pred_dense_atom_mask=pred_dense_atom_mask,
 
                 queries_mask=queries_mask,
@@ -366,7 +351,7 @@ class diffusion():
     def _sample_diffusion(
             self,
             batch: feat_batch.Batch,
-            single, pair, target_feat,seq_mask,real_feat,
+            single, pair, target_feat,real_feat,
             index=0
             # embeddings: dict[str, torch.Tensor],
     ):
@@ -380,7 +365,7 @@ class diffusion():
 
         noise_level = noise_levels[0]
         positions = torch.randn((self.num_samples,)+
-            pred_dense_atom_mask.shape + (3,), device=device,dtype=torch.bfloat16)[index].contiguous()
+            pred_dense_atom_mask.shape + (3,), device=device,dtype=pair.dtype)[index].contiguous()
         positions *= noise_level
 
         acat_atoms_to_q_gather_idxs = batch.atom_cross_att.token_atoms_to_queries.gather_idxs
@@ -438,7 +423,6 @@ class diffusion():
                 pair_act=pair_act,keys_mask=keys_mask,keys_single_cond=keys_single_cond,
 
                 trunk_single_cond=trunk_single_cond, pair_logits_cat=pair_logits_cat,
-                seq_mask=seq_mask,
                 pred_dense_atom_mask=pred_dense_atom_mask,
                 queries_mask=queries_mask,
                 acat_atoms_to_q_gather_idxs=acat_atoms_to_q_gather_idxs,
@@ -453,12 +437,11 @@ class diffusion():
 
         return positions
 
-
-    def forward(self, batch, single, pair, target_feat,real_feat,index=0,seq_mask=None):
+    def forward(self, batch, single, pair, target_feat,real_feat,index=0):
         # self.conversion_time=0
         # batch = feat_batch.Batch.from_data_dict(batch)
         return self._sample_diffusion(batch,
-            single, pair, target_feat,seq_mask,real_feat=real_feat,index=index
+            single, pair, target_feat,real_feat=real_feat,index=index
         )
 
 

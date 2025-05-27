@@ -1,29 +1,8 @@
+import os
+
 import openvino as ov
-import torch
 
-# from TestVino import ov_model
-
-# model = resnet50(weights='DEFAULT')
-#
-# # prepare input_data
-# input_data = torch.rand(1, 3, 224, 224)
-#
-# ov_model = ov.convert_model(model, example_input=input_data)
-# ov_model=ov.convert_model('/root/pycharm/diffusion_head_onnx_base2/diffusion_head.onnx')
-# onnx_path='/root/pycharm/diffusion_head_onnx_2/diffusion_head.onnx'
-# vino_path='/root/pycharm/diffusion_head_openvino_2/model.xml'
-# onnx_path='/root/pycharm/diffusion_head_onnx_no_aug/diffusion_head.onnx'
-onnx_path='/root/asc25/evo_onnx/evoformer.onnx'
-vino_path='/root/asc25/evo_vino/model.xml'
-# onnx_path='/root/pycharm/evo_onnx/evoformer_vim.onnx'
-# onnx_path='/root/pycharm/sdpa_openvino_vim.onnx'
-# vino_path='/root/pycharm/sdpa_openvino.xml'
-
-# internal_path='/root/pycharm/sdpa_inernal.onnx'
 from openvino.frontend import OpExtension
-
-
-
 # import onnx
 # from onnx import helper, shape_inference
 #
@@ -70,15 +49,6 @@ sdpa_extension = OpExtension(
     attr_values_map={
         "causal": False  # 默认非因果注意力
     }
-    # 属性映射（若名称不一致）
-    # attr_map={
-    #     "scale": "scale",      # 若 ONNX 属性名称为 "scale"，直接映射
-    #     "causal": "causal"     # 若 ONNX 属性名称为 "causal"，直接映射
-    # },
-    # 输入映射（若输入顺序不一致）
-    # inputs=["query", "key", "value", "mask"],  # 若输入顺序一致可省略
-    # 输出映射（若输出顺序不一致）
-    # outputs=["output"]
 )
 
 from openvino.frontend import ConversionExtension, NodeContext
@@ -88,14 +58,6 @@ def convert_sdpa(node: NodeContext):
     key = node.get_input(1)
     value = node.get_input(2)
     mask = node.get_input(3)
-    # q_size=node.get_input_size()
-    # print(q_size)
-    # q_shape=query.shape[-1]
-    # scale=q_shape** -0.5
-    # 提取属性（假设 ONNX 算子属性名称为 alpha 和 is_causal）
-    # scale = node.get_attribute("alpha", 1.0)
-    # causal = node.get_attribute("is_causal", False)
-
     # 创建 OpenVINO 的 SDPA 算子
     sdpa = ov.opset15.scaled_dot_product_attention(query, key, value, mask,scale=None)
     return sdpa.outputs()
@@ -112,19 +74,33 @@ from openvino.frontend.onnx import OpExtension
 # 注册转换扩展
 # core.add_extension(ConversionExtension("ai.onnx.Identity", convert_sdpa))
 # 添加扩展到 OpenVINO 运行时
-ov_model=ov.convert_model(onnx_path)
 
-# ov_model=core.read_model(onnx_path)
-# ov_model=ov.convert_model(internal_path,verbose=True )
-###### Option 1: Save to OpenVINO IR:
-print("start to save")
-# save model to OpenVINO IR for later use
-ov.save_model(ov_model, vino_path,compress_to_fp16=False)
+OPENVINO_PATH = '/root/asc25'
+DIFFUSION_OPENVINO_PATH=OPENVINO_PATH+'/diffusion_head_openvino'
+EVO_VINO_PATH=OPENVINO_PATH+'/evo_vino'
+CONFIDENCE_VINO_PATH=OPENVINO_PATH+'/confidence_vino'
+os.makedirs(CONFIDENCE_VINO_PATH, exist_ok=True)
+os.makedirs(EVO_VINO_PATH, exist_ok=True)
+os.makedirs(DIFFUSION_OPENVINO_PATH, exist_ok=True)
 
-###### Option 2: Compile and infer with OpenVINO:
 
-# # compile model
-# compiled_model = ov.compile_model(ov_model)
-#
-# # run inference
-# result = compiled_model(input_data)
+ONNX_PATH='/root/asc25'
+DIFFUSION_ONNX_PATH = ONNX_PATH + '/diffusion_head_onnx/diffusion_head.onnx'
+EVO_ONNX_PATH = ONNX_PATH + '/evo_onnx/evoformer.onnx'
+CONFIDENCE_ONNX_PATH = ONNX_PATH + '/confidence_onnx/confidence_head.onnx'
+
+print("start to convert evoformer vino model")
+evo_vino=ov.convert_model(EVO_ONNX_PATH)
+print("start to save evo vino model")
+ov.save_model(evo_vino, EVO_VINO_PATH+"/model.xml",compress_to_fp16=True)
+print("start to convert diffusion vino model")
+diffusion_vino=ov.convert_model(DIFFUSION_ONNX_PATH)
+print("start to save diffusion vino model")
+ov.save_model(diffusion_vino, DIFFUSION_OPENVINO_PATH+"/model.xml",compress_to_fp16=True)
+print("start to convert confidence vino model")
+confidence_vino=ov.convert_model(CONFIDENCE_ONNX_PATH)
+print("start to save confidence vino model")
+ov.save_model(confidence_vino, CONFIDENCE_VINO_PATH+"/model.xml",compress_to_fp16=True)
+print("all model have convert to openvino")
+
+

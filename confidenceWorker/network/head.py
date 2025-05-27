@@ -271,24 +271,20 @@ class ConfidenceHead(nn.Module):
         def get_tmscore_adjusted_pae(num_interface_tokens, bin_centers, pae_probs):
             # Clip to avoid negative/undefined d0.
             clipped_num_res = torch.clamp(num_interface_tokens, min=19)
-
             # Compute d_0(num_res) as defined by TM-score, eqn. (5) in
             # http://zhanglab.ccmb.med.umich.edu/papers/2004_3.pdf
             # Yang & Skolnick "Scoring function for automated
             # assessment of protein structure template quality" 2004.
             d0 = 1.24 * (clipped_num_res - 15) ** (1.0 / 3) - 1.8
-
             # Make compatible with [num_tokens, num_tokens, num_bins]
             d0 = d0[:, :, None]
             bin_centers = bin_centers[None, None, :]
-
             # TM-Score term for every bin.
             tm_per_bin = 1.0 / \
                 (1 + torch.square(bin_centers) / torch.square(d0))
             # E_distances tm(distance).
             predicted_tm_term = torch.sum(pae_probs * tm_per_bin, dim=-1)
             return predicted_tm_term
-
         # Interface version
         x = asym_id[None, :] == asym_id[:, None]
         num_chain_tokens = torch.sum(x , dim=-1, dtype=torch.int32)
@@ -302,7 +298,6 @@ class ConfidenceHead(nn.Module):
             size=pair_mask.shape, dtype=torch.int32, device=x.device
         )
         num_global_tokens *= seq_mask.sum()
-
 
         global_apae = get_tmscore_adjusted_pae(
             num_global_tokens, bin_centers, pae_probs

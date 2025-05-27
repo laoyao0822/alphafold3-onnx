@@ -317,7 +317,8 @@ class EvoFormerOne():
                           # 'attn_mask_seq':{2:seq_len,3:seq_len}
                       },
                           )
-        exit(0)
+        print("save done successfully save evoformer to onnx: ",save_path)
+        # exit(0)
 
 
 
@@ -328,7 +329,7 @@ class EvoFormerOne():
         num_res = batch.num_res
         pair= torch.zeros(
                 [num_res, num_res, self.evoformer_pair_channel], device=target_feat.device,
-                dtype=torch.bfloat16,
+                dtype=target_feat.dtype,
             )
         single=torch.zeros(
                 [num_res, self.evoformer_seq_channel], dtype=pair.dtype, device=target_feat.device,

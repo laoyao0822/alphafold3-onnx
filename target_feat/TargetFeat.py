@@ -79,46 +79,46 @@ class TargetFeat(nn.Module):
         return target_feat
 
     def forward(self,
-                aatype,
-                profile, deletion_mean,
-
-                pred_dense_atom_mask,
-
-                acat_atoms_to_q_gather_idxs,
-                acat_atoms_to_q_gather_mask,
-
-                acat_q_to_k_gather_idxs,
-                acat_q_to_k_gather_mask,
-
-                acat_t_to_q_gather_idxs,
-                acat_t_to_q_gather_mask,
-
-                acat_q_to_atom_gather_idxs,
-                acat_q_to_atom_gather_mask,
-
-                acat_t_to_k_gather_idxs,
-                acat_t_to_k_gather_mask,
-
-                ref_ops, ref_mask, ref_element, ref_charge,
-                ref_atom_name_chars, ref_space_uid,
+                batch,
                 ) :
-
         target_feat = self.create_target_feat_embedding(
-            aatype=aatype,profile=profile,deletion_mean=deletion_mean,
-            ref_ops=ref_ops, ref_mask=ref_mask, ref_element=ref_element, ref_charge=ref_charge,
-            ref_atom_name_chars=ref_atom_name_chars, ref_space_uid=ref_space_uid,
-            pred_dense_atom_mask=pred_dense_atom_mask,
-            acat_atoms_to_q_gather_idxs=acat_atoms_to_q_gather_idxs,
-            acat_atoms_to_q_gather_mask=acat_atoms_to_q_gather_mask,
-            acat_q_to_k_gather_idxs=acat_q_to_k_gather_idxs,
-            acat_q_to_k_gather_mask=acat_q_to_k_gather_mask,
-            acat_t_to_q_gather_idxs=acat_t_to_q_gather_idxs,
-            acat_t_to_q_gather_mask=acat_t_to_q_gather_mask,
-            acat_q_to_atom_gather_idxs=acat_q_to_atom_gather_idxs,
-            acat_q_to_atom_gather_mask=acat_q_to_atom_gather_mask,
-            acat_t_to_k_gather_idxs=acat_t_to_k_gather_idxs,
-            acat_t_to_k_gather_mask=acat_t_to_k_gather_mask,
-        )
+            aatype=batch.token_features.aatype,
+            profile=batch.msa.profile,
+            deletion_mean=batch.msa.deletion_mean,
+            pred_dense_atom_mask=batch.predicted_structure_info.atom_mask,
+            acat_atoms_to_q_gather_idxs=batch.atom_cross_att.token_atoms_to_queries.gather_idxs,
+            acat_atoms_to_q_gather_mask=batch.atom_cross_att.token_atoms_to_queries.gather_mask,
+            acat_q_to_k_gather_idxs=batch.atom_cross_att.queries_to_keys.gather_idxs,
+            acat_q_to_k_gather_mask=batch.atom_cross_att.queries_to_keys.gather_mask,
+            acat_t_to_q_gather_idxs=batch.atom_cross_att.tokens_to_queries.gather_idxs,
+            acat_t_to_q_gather_mask=batch.atom_cross_att.tokens_to_queries.gather_mask,
+            acat_q_to_atom_gather_idxs=batch.atom_cross_att.queries_to_token_atoms.gather_idxs,
+            acat_q_to_atom_gather_mask=batch.atom_cross_att.queries_to_token_atoms.gather_mask,
+            acat_t_to_k_gather_idxs=batch.atom_cross_att.tokens_to_keys.gather_idxs,
+            acat_t_to_k_gather_mask=batch.atom_cross_att.tokens_to_keys.gather_mask,
+            ref_ops=batch.ref_structure.positions,
+            ref_mask=batch.ref_structure.mask,
+            ref_element=batch.ref_structure.element,
+            ref_charge=batch.ref_structure.charge,
+            ref_atom_name_chars=batch.ref_structure.atom_name_chars,
+            ref_space_uid=batch.ref_structure.ref_space_uid
+        ).contiguous()
+        # target_feat = self.create_target_feat_embedding(
+        #     aatype=aatype,profile=profile,deletion_mean=deletion_mean,
+        #     ref_ops=ref_ops, ref_mask=ref_mask, ref_element=ref_element, ref_charge=ref_charge,
+        #     ref_atom_name_chars=ref_atom_name_chars, ref_space_uid=ref_space_uid,
+        #     pred_dense_atom_mask=pred_dense_atom_mask,
+        #     acat_atoms_to_q_gather_idxs=acat_atoms_to_q_gather_idxs,
+        #     acat_atoms_to_q_gather_mask=acat_atoms_to_q_gather_mask,
+        #     acat_q_to_k_gather_idxs=acat_q_to_k_gather_idxs,
+        #     acat_q_to_k_gather_mask=acat_q_to_k_gather_mask,
+        #     acat_t_to_q_gather_idxs=acat_t_to_q_gather_idxs,
+        #     acat_t_to_q_gather_mask=acat_t_to_q_gather_mask,
+        #     acat_q_to_atom_gather_idxs=acat_q_to_atom_gather_idxs,
+        #     acat_q_to_atom_gather_mask=acat_q_to_atom_gather_mask,
+        #     acat_t_to_k_gather_idxs=acat_t_to_k_gather_idxs,
+        #     acat_t_to_k_gather_mask=acat_t_to_k_gather_mask,
+        # )
         # sys.exit(" ---------")
 
         return  target_feat
