@@ -33,11 +33,11 @@ import torch.utils._pytree as pytree
 
 from torch.profiler import profile, record_function, ProfilerActivity
 
-from torchfold3.alphafold3 import AlphaFold3
-from torchfold3.misc.params import import_jax_weights_
+
 from target_feat.TargetFeat import  TargetFeat
 from torchfold3.config import *
 from torchfold3.misc import feat_batch
+
 from target_feat.misc import params as target_feat_params
 from evoformer.evoformerOne import EvoFormerOne
 from evoformer.evoformerOne import EvoformerVino
@@ -49,6 +49,7 @@ from distogram.misc import params as distogram_params
 from confidenceWorker.confidence import ConfidenceOne
 from confidenceWorker.misc import params as confidence_params
 import time
+from confidenceWorker.confidenceVino import ConfidenceVino
 
 from diffusionWorker2.diffusionOne import diffusion
 
@@ -56,11 +57,7 @@ from diffusionWorker2.misc import params as diffusion_params
 from diffusionWorker2.diffusion_step_vino import diffusion_vino
 from evoformer import preprocess
 
-DIFFUSION_ONNX=False
 # UseVino=False
-SAVE_EVO_ONNX= False
-USE_EVO_VINO= False
-SAVE_CONFIDENCE_ONNX=False
 USE_IPEX=False
 
 _HOME_DIR = pathlib.Path(os.environ.get('HOME'))
@@ -111,12 +108,17 @@ _RUN_INFERENCE = flags.DEFINE_bool(
 _USE_DIFFUSION_VINO = flags.DEFINE_bool(
     'use_diffusion_vino',
     False,
-    'Whether to run inference on the fold inputs.',
+    'Whether to run diffusion inference in openvino.',
 )
-_DIFFUSION_VINO_PATH = flags.DEFINE_string(
-    'diffusion_vino_path',
-    DIFFUSION_OPENVINO_PATH,
-    'Path to the model to use for inference.',
+_USE_CONFIDENCE_VINO = flags.DEFINE_bool(
+    'use_confidence_vino',
+    False,
+    'Whether to run confidence inference in openvino .',
+)
+_USE_EVO_VINO = flags.DEFINE_bool(
+    'use_evo_vino',
+    False,
+    'Whether to run evoformer inference in openvino .',
 )
 
 _CPU_INFERENCE = flags.DEFINE_bool(
@@ -219,7 +221,7 @@ def setup(rank, world_size,master_addr='192.168.10.1', master_port='8082'):
         print("start to set up multi cpu","rank:",rank,"world_size:",world_size)
         dist.init_process_group(
             backend='gloo',
-            init_method='tcp://10.0.0.1:11499',
+            init_method='tcp://'+master_addr+':'+master_port,
             rank=rank,
             world_size=world_size,
         )
@@ -227,7 +229,7 @@ def setup(rank, world_size,master_addr='192.168.10.1', master_port='8082'):
         print("start to set up multi gpu", "rank:", rank, "world_size:", world_size)
         dist.init_process_group(
             backend='nccl',
-            init_method='tcp://127.0.0.1:8802',
+            init_method='tcp://'+master_addr+':'+master_port,
             rank=rank,
             world_size=world_size,
             device_id=torch.device(f"cuda:{rank}")
@@ -254,7 +256,7 @@ class ModelRunner:
         self.target_feat.eval()
         target_feat_params.import_jax_weights_(self.target_feat,model_dir)
 
-        if USE_EVO_VINO:
+        if _USE_EVO_VINO.value:
             print('import evoformer vino')
             self.evoformer=EvoformerVino()
             self.evoformer.initOpenvinoModel(EVO_VINO_PATH,num_threads=_NUM_THREADS.value)
@@ -267,7 +269,7 @@ class ModelRunner:
         if _USE_DIFFUSION_VINO.value:
             # self.diffusion=diffusion()
             self.diffusion=diffusion_vino()
-            self.diffusion.initOpenvinoModel(_DIFFUSION_VINO_PATH.value,num_threads=_NUM_THREADS.value)
+            self.diffusion.initOpenvinoModel(DIFFUSION_OPENVINO_PATH,num_threads=_NUM_THREADS.value)
             self.diffusion.import_diffusion_head_params(model_dir)
 
             # self.diffusion.initOnnxModel(ONNX_PATH)
@@ -279,10 +281,13 @@ class ModelRunner:
             # self.diffusion.eval()
             diffusion_params.import_diffusion_head_params(self.diffusion,model_dir)
 
-        self.confidence=ConfidenceOne()
-        confidence_params.import_jax_weights_(self.confidence,model_dir)
-        self.confidence.confidence_head.eval()
-
+        if _USE_CONFIDENCE_VINO.value:
+            self.confidence=ConfidenceVino()
+            self.confidence.initOpenvinoModel(openvino_path=OPENVINO_PATH,num_threads=_NUM_THREADS.value)
+        else:
+            self.confidence=ConfidenceOne()
+            confidence_params.import_jax_weights_(self.confidence,model_dir)
+            self.confidence.confidence_head.eval()
 
         self.distogram=DistogramHead()
         self.distogram.eval()
@@ -297,13 +302,15 @@ class ModelRunner:
                 # import openvino as ov
                 print("Applying Intel Extension for PyTorch optimizations...")
                 self.target_feat = ipex.optimize(self.target_feat,weights_prepack=False,optimize_lstm=True,auto_kernel_selection=True,dtype=torch.bfloat16)
-                self.evoformer.evoformer = ipex.optimize(self.evoformer.evoformer,weights_prepack=False,optimize_lstm=True,auto_kernel_selection=True,dtype=torch.bfloat16)
+                if not  _USE_EVO_VINO.value:
+                    self.evoformer.evoformer = ipex.optimize(self.evoformer.evoformer,weights_prepack=False,optimize_lstm=True,auto_kernel_selection=True,dtype=torch.bfloat16)
                 # self.evoformer.evoformer = torch.compile(self.evoformer.evoformer, backend="ipex")
                 if not _USE_DIFFUSION_VINO.value:
                     self.diffusion.pre_model = ipex.optimize(self.diffusion.pre_model,weights_prepack=False,optimize_lstm=True,auto_kernel_selection=True,dtype=torch.bfloat16)
                     self.diffusion.diffusion_head = ipex.optimize(self.diffusion.diffusion_head,weights_prepack=False,optimize_lstm=True,auto_kernel_selection=True,dtype=torch.bfloat16)
                 # self.diffusion.diffusion_head=torch.compile(self.diffusion.diffusion_head,backend="ipex")
-                self.confidence.confidence_head=ipex.optimize(self.confidence.confidence_head,weights_prepack=False,optimize_lstm=True,auto_kernel_selection=True,dtype=torch.bfloat16)
+                if not _USE_CONFIDENCE_VINO.value:
+                    self.confidence.confidence_head=ipex.optimize(self.confidence.confidence_head,weights_prepack=False,optimize_lstm=True,auto_kernel_selection=True,dtype=torch.bfloat16)
                 self.distogram=ipex.optimize(self.distogram,weights_prepack=False,optimize_lstm=True,auto_kernel_selection=True,dtype=torch.bfloat16)
 
             torch.set_flush_denormal(True)
@@ -737,17 +744,17 @@ def write_outputs(
             writer.writerow(['seed', 'sample', 'ranking_score'])
             writer.writerows(ranking_scores)
             
-            if _SCORE_TABLE_TIMESTAMP:
-                import datetime
+            # if _SCORE_TABLE_TIMESTAMP:
+            import datetime
                 # Add the current time as the last row
-                current_time = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                writer.writerow(['Current Time', current_time])
-            if _SCORE_TABLE_DISPALY_TOP:
+            current_time = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            writer.writerow(['Current Time', current_time])
+            # if _SCORE_TABLE_DISPALY_TOP:
                 # Add the top ranking score
-                writer.writerow(['Top Ranking Score:', max_ranking_score])
-            if _SCORE_TABLE_DISPALY_AVG:
+            writer.writerow(['Top Ranking Score:', max_ranking_score])
+            # if _SCORE_TABLE_DISPALY_AVG:
                 # Add the average ranking score
-                writer.writerow(['Average Ranking Score:', np.mean([score[2] for score in ranking_scores])])
+            writer.writerow(['Average Ranking Score:', np.mean([score[2] for score in ranking_scores])])
 
 
 @overload

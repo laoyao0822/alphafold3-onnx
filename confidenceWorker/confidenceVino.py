@@ -1,4 +1,3 @@
-
 import openvino as ov
 import openvino.properties as properties
 import torch
@@ -47,6 +46,7 @@ class ConfidenceVino():
             infer_request.set_input_tensor(idx, ov_tensor)
             idx += 1
         infer_request.infer()
+
         predicted_lddt=torch.from_numpy(infer_request.get_input_tensor(0).data)
         predicted_experimentally_resolved=torch.from_numpy(infer_request.get_input_tensor(1).data)
         full_pde=torch.from_numpy(infer_request.get_input_tensor(2).data)
