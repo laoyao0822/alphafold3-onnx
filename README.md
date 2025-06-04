@@ -64,7 +64,9 @@ python main.py \
    ```
 2 **导出为OpenVINO**加速：
   ```bash
-   python convert_to_openvino.py
+   python convert_to_openvino.py \
+  --onnx_path=/path/to/onnx_models \
+  --output_path=/path/to/openvino_models
    ```
 
 
