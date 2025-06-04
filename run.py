@@ -58,7 +58,7 @@ from diffusionWorker2.diffusion_step_vino import diffusion_vino
 from evoformer import preprocess
 
 # UseVino=False
-USE_IPEX=False
+# USE_IPEX=False
 
 _HOME_DIR = pathlib.Path(os.environ.get('HOME'))
 DEFAULT_MODEL_DIR = _HOME_DIR / 'models/model_103275239_1'
@@ -105,6 +105,13 @@ _RUN_INFERENCE = flags.DEFINE_bool(
     True,
     'Whether to run inference on the fold inputs.',
 )
+
+_USE_IPEX=flags.DEFINE_bool(
+    'use_ipex',
+    True,
+    'Whether to use ipex to accelerate cpu inference.'
+)
+
 _USE_DIFFUSION_VINO = flags.DEFINE_bool(
     'use_diffusion_vino',
     False,
@@ -296,7 +303,7 @@ class ModelRunner:
         # Apply IPEX optimization for CPU if device is CPU
         if _CPU_INFERENCE.value:
             print("mkl",torch.backends.mkl.is_available(),"onednn",torch.backends.mkldnn.is_available())
-            if  USE_IPEX and not _SAVE_ONNX.value:
+            if _USE_IPEX.value and not _SAVE_ONNX.value:
                 # pass
                 import intel_extension_for_pytorch as ipex
                 # import openvino as ov
