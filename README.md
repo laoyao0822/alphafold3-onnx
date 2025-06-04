@@ -1,9 +1,10 @@
 
 # AlphaFold3 OpenVINO/ONNX 推理优化
 
-本项目基于AlphaFold3模型，实现了ONNX模型导出和OpenVINO推理加速功能，支持CPU/GPU高效推理与分布式计算。
+本项目基于AlphaFold3模型，实现了ONNX模型导出和OpenVINO，Tensorrt(tensorrt将在不久提供支持)推理加速功能，支持CPU/GPU高效推理与分布式计算。
 tips:
     openvino性能仅在小算例上有一定优势，进推荐在小算例上使用
+
 ## 环境要求
 - Python 3.11
 - PyTorch 2.7(如果要导出为onnx，推荐临时切换2.8)
