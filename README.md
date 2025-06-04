@@ -10,10 +10,6 @@
 - OpenVINO 2024.1
 - Intel® Extension for PyTorch (IPEX)
 
-```bash
-pip install openvino-dev[pytorch]==2023.0.0 intel-extension-for-pytorch==2.0.0 rdkit
-```
-
 ## 模型文件准备
 1. 将原始AlphaFold3模型置于默认目录：
    ```bash
