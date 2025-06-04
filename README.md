@@ -1,6 +1,3 @@
-以下是为您修改后的AlphaFold3模型导出ONNX与OpenVINO的README文档模板，包含运行说明和关键参数解释：
-
----
 
 # AlphaFold3 OpenVINO/ONNX 推理优化
 
@@ -8,12 +5,10 @@
 
 ## 环境要求
 
-- Python 3.9+
-- PyTorch 2.0+
-- OpenVINO 2023.0+
+- Python 3.11
+- PyTorch 2.7(如果要导出为onnx，推荐临时切换2.8)
+- OpenVINO 2024.1
 - Intel® Extension for PyTorch (IPEX)
-- RDKit (化学结构处理)
-- 依赖库：`absl-py`, `numpy`, `torchvision`
 
 ```bash
 pip install openvino-dev[pytorch]==2023.0.0 intel-extension-for-pytorch==2.0.0 rdkit
