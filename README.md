@@ -1,7 +1,7 @@
 
 # AlphaFold3 OpenVINO/ONNX 推理优化
 
-本项目基于AlphaFold3模型，实现了ONNX模型导出和OpenVINO推理加速功能，支持CPU高效推理与分布式计算。
+本项目基于AlphaFold3模型，实现了ONNX模型导出和OpenVINO推理加速功能，支持CPU/GPU高效推理与分布式计算。
 
 ## 环境要求
 
