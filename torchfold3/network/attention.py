@@ -312,7 +312,6 @@ class GridSelfAttention(nn.Module):
         if self.transpose:
             pair = pair.permute(1, 0, 2)
 
-
         seq_len = pair.shape[0]
         if seq_len > 500 and self.world_size > 1 and config._GridAttention_TP:
             pair = self._attention_tp(pair, mask).contiguous()

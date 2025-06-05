@@ -61,8 +61,7 @@ from evoformer import preprocess
 # USE_IPEX=False
 
 _HOME_DIR = pathlib.Path(os.environ.get('HOME'))
-DEFAULT_MODEL_DIR = _HOME_DIR / 'models/model_103275239_1'
-DEFAULT_DB_DIR = _HOME_DIR / 'public_databases'
+DEFAULT_MODEL_DIR = _HOME_DIR / 'af3/'
 # ONNX_PATH = '/root/asc25'
 OPENVINO_PATH = '/root/asc25'
 DIFFUSION_OPENVINO_PATH=OPENVINO_PATH+'/diffusion_head_openvino/model.xml'

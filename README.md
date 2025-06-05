@@ -14,12 +14,8 @@ tips:
 ## 模型文件准备
 1. 将原始AlphaFold3模型置于默认目录：
    ```bash
-   mkdir -p ~/models/model_103275239_1
-   cp /path/to/original_model/* ~/models/model_103275239_1/
-   ```
-2. 公共数据库路径：
-   ```bash
-   mkdir -p ~/public_databases
+   mkdir -p ~/af3
+   cp /path/to/original_model/* ~/af3
    ```
 
 ## 运行方式

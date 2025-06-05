@@ -129,7 +129,6 @@ class GridSelfAttention(nn.Module):
         dist.recv(tensor=pair, src=0)
 
         # 按顺序拆分张量
-
         q2 = self.q_projection2(pair)
         k2 = self.k_projection2(pair)
         v2 = self.v_projection2(pair)
